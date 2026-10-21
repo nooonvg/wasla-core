@@ -33,6 +33,14 @@ export interface AuthenticatedPrincipal {
   identity_id: string;
   session_id: string;
   organization_ids: string[];
+  /**
+   * Each membership's own roles (B-47). `roles` and `permissions` below are the
+   * union across all of them — what the principal may do *somewhere* — and a
+   * check against one organization must read the membership in that
+   * organization, never the union. Published so a client can show a person
+   * their roles per organization (XR-8.9).
+   */
+  memberships: Array<{ organization_id: string; roles: Role[] }>;
   roles: Role[];
   permissions: Permission[];
   /** The external system this credential belongs to, or `null` for a person. */
@@ -363,6 +371,7 @@ export class IdentityService {
       identity_id: identity.identity_id,
       session_id: session.session_id,
       organization_ids: memberships.map((m) => m.organization_id),
+      memberships: memberships.map((m) => ({ organization_id: m.organization_id, roles: [...m.roles] })),
       roles,
       permissions: [...permissionsForRoles(roles)],
       service_name: principal.service_name,
@@ -423,8 +432,20 @@ export class IdentityService {
   }
 
   /**
-   * Authorization check. Tenant isolation is enforced here: a permission is only
-   * granted inside an organization the principal belongs to.
+   * Authorization check. Tenant isolation is enforced here: a permission named
+   * with an organization is granted only by the principal's membership **in
+   * that organization**.
+   *
+   * B-47, closed. Until then the check read `actor.permissions` — the union over
+   * every membership — and then only asked whether the principal belonged to
+   * the organization at all. Measured: a principal that was `org_admin` of A and
+   * `org_member` of B answered `201` to `POST /v1/memberships` granting a third
+   * person `org_admin` in B. `platform_admin` stays what it was: held in any
+   * organization, it acts in every one.
+   *
+   * The refusals keep their order and their words: no such permission anywhere
+   * is `missing permission`; not a member is `not a member`; a member whose
+   * role there does not grant it is `missing permission in this organization`.
    */
   authorize(
     actor: AuthenticatedPrincipal,
@@ -434,12 +455,18 @@ export class IdentityService {
     if (!actor.permissions.includes(permission)) {
       throw forbidden("missing permission", { permission });
     }
-    if (organizationId !== undefined && !actor.organization_ids.includes(organizationId)) {
-      if (!actor.roles.includes("platform_admin")) {
-        throw forbidden("principal is not a member of this organization", {
-          organization_id: organizationId,
-        });
-      }
+    if (organizationId === undefined || actor.roles.includes("platform_admin")) return;
+    const membership = actor.memberships.find((m) => m.organization_id === organizationId);
+    if (membership === undefined) {
+      throw forbidden("principal is not a member of this organization", {
+        organization_id: organizationId,
+      });
+    }
+    if (!permissionsForRoles(membership.roles).has(permission)) {
+      throw forbidden("missing permission in this organization", {
+        permission,
+        organization_id: organizationId,
+      });
     }
   }
 }

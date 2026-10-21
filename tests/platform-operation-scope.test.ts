@@ -256,3 +256,90 @@ describe("B-46: a subscription is read by its owner", () => {
   });
 });
 
+
+describe("B-47: a permission granted in one organization is not honoured in another", () => {
+  async function dual(w: World): Promise<{ token: string; principalId: string }> {
+    const registered = await w.core.identity.registerIdentity({
+      channel_type: "web",
+      external_id: `dual-${crypto.randomUUID()}`,
+      correlation_id: CORR,
+    });
+    const principalId = registered.principal.principal_id;
+    await w.core.identity.grantMembership({
+      principal_id: principalId,
+      organization_id: w.tenantA,
+      roles: ["org_admin"],
+      correlation_id: CORR,
+    });
+    await w.core.identity.grantMembership({
+      principal_id: principalId,
+      organization_id: w.tenantB,
+      roles: ["org_member"],
+      correlation_id: CORR,
+    });
+    const session = await w.core.identity.issueSession({
+      principal_id: principalId,
+      channel_type: "web",
+      correlation_id: CORR,
+    });
+    return { token: session.token, principalId };
+  }
+
+  async function stranger(w: World): Promise<string> {
+    const registered = await w.core.identity.registerIdentity({
+      channel_type: "web",
+      external_id: `stranger-${crypto.randomUUID()}`,
+      correlation_id: CORR,
+    });
+    return registered.principal.principal_id;
+  }
+
+  it("refuses an org_admin of A, who is only a member of B, granting a role in B", async () => {
+    const w = await world();
+    const actor = await dual(w);
+    const target = await stranger(w);
+    const refused = await call(w.core, actor.token, "POST", "/v1/memberships", {
+      principal_id: target,
+      organization_id: w.tenantB,
+      roles: ["org_admin"],
+    });
+    expect(refused.status).toBe(403);
+    expect(refused.body["message"]).toBe("missing permission in this organization");
+    expect(refused.body["details"]).toMatchObject({ permission: "organization.write", organization_id: w.tenantB });
+  });
+
+  it("still lets the same principal administer A, and read B as the member it is", async () => {
+    const w = await world();
+    const actor = await dual(w);
+    const target = await stranger(w);
+    const granted = await call(w.core, actor.token, "POST", "/v1/memberships", {
+      principal_id: target,
+      organization_id: w.tenantA,
+      roles: ["org_member"],
+    });
+    expect(granted.status).toBe(201);
+    const readB = await call(w.core, actor.token, "GET", `/v1/organizations/${w.tenantB}`);
+    expect(readB.status).toBe(200);
+  });
+
+  it("publishes each membership with its own roles on the current session", async () => {
+    const w = await world();
+    const actor = await dual(w);
+    const current = await call(w.core, actor.token, "GET", "/v1/sessions/current");
+    expect(current.status).toBe(200);
+    const memberships = current.body["memberships"] as Array<{ organization_id: string; roles: string[] }>;
+    expect(memberships.find((m) => m.organization_id === w.tenantA)?.roles).toEqual(["org_admin"]);
+    expect(memberships.find((m) => m.organization_id === w.tenantB)?.roles).toEqual(["org_member"]);
+  });
+
+  it("leaves platform_admin acting in every organization", async () => {
+    const w = await world();
+    const target = await stranger(w);
+    const granted = await call(w.core, w.operator, "POST", "/v1/memberships", {
+      principal_id: target,
+      organization_id: w.tenantB,
+      roles: ["org_member"],
+    });
+    expect(granted.status).toBe(201);
+  });
+});
