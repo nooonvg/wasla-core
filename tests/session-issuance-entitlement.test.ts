@@ -52,12 +52,11 @@
  * argument: anybody who can run it can already read every row and write every
  * table, while the route it replaces needed only the ability to send a request.
  *
- * What this file does not claim. That `session.issue` is *scoped*: a service
- * credential may mint a session for any principal, not only for the people its
- * own channel speaks for. That is **B-42**, recorded rather than half-answered,
- * and it is a strictly smaller hole than the one closed here — it needs a
- * credential CORE issued to a named system, and every issuance is audited as
- * `session.issued` against the issuing principal.
+ * What this file does not claim: that `session.issue` is *scoped*. That was
+ * **B-42**, recorded here while it was open; it is closed now, and its gate is
+ * `tests/session-issuance-scope.test.ts`: a service issues only on the channels
+ * it was provisioned for, only for a person verified on that channel, never for
+ * a principal that could issue itself, and the audit row names the issuer.
  *
  * No database: memory backend, so this gate runs in both CI jobs.
  */
@@ -247,12 +246,20 @@ describe("issuing a session is a permission, not a public route", () => {
 
   it("lets a service credential issue for the people its channel speaks for", async () => {
     const fix = await fixture();
-    const adapter = await principalWith(fix, "+966500000103", ["service"]);
+    // Since B-42 a service issues only on the channels it was provisioned for,
+    // and only for a person verified there: `principalWith` registers on phone.
+    const adapter = await provisionServiceCredential(fix.core, {
+      service_name: "phone-adapter",
+      organization_id: fix.organizationId,
+      roles: ["service"],
+      issues_for_channels: ["phone"],
+      correlation_id: CORR,
+    });
     const person = await principalWith(fix, "+966500000104");
     const issued = await issue(
       fix.core,
-      { principal_id: person.principalId, channel_type: "telegram" },
-      adapter.token,
+      { principal_id: person.principalId, channel_type: "phone" },
+      adapter.access_token,
     );
     expect(issued.status).toBe(201);
     const token = (issued.body as { access_token: string }).access_token;
@@ -431,15 +438,17 @@ describe("the first credential of an environment", () => {
       service_name: "market",
       organization_id: fix.organizationId,
       roles: ["service"],
+      issues_for_channels: ["phone"],
       correlation_id: CORR,
     });
     expect(provisioned.identity_created).toBe(true);
     expect(provisioned.membership_created).toBe(true);
     expect(provisioned.roles).toEqual(["service"]);
+    expect(provisioned.issues_for_channels).toEqual(["phone"]);
     const person = await principalWith(fix, "+966500000301");
     const issued = await issue(
       fix.core,
-      { principal_id: person.principalId, channel_type: "telegram" },
+      { principal_id: person.principalId, channel_type: "phone" },
       provisioned.access_token,
     );
     expect(issued.status).toBe(201);

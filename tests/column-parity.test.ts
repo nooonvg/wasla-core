@@ -160,7 +160,7 @@ describe("column parity: the declaration", () => {
     // claim by default, and the moment it was taken is the moment it was
     // written — both defaults the store overrides explicitly on every write, as
     // it does for all 50.)
-    expect(defaultedColumns().length).toBe(50);
+    expect(defaultedColumns().length).toBe(51);
     expect(defaultedColumns()).toContain("outbox.created_at");
   });
 });
@@ -285,7 +285,7 @@ describe.skipIf(!url)("column parity against the live schema", () => {
     // and writes rather than one nothing touched. (263 before that milestone,
     // 271 after it: milestone 33 added `state`, `claim_token`, `claimed_at` and
     // `completed_at` so the row can exist before the answer does.)
-    expect(columns.length, "no columns read: the gate would pass vacuously").toBe(275);
+    expect(columns.length, "no columns read: the gate would pass vacuously").toBe(276);
     const problems: string[] = [];
     for (const column of columns) {
       const shapes = COLUMN_SHAPES[column.table] ?? [];
@@ -362,7 +362,7 @@ describe.skipIf(!url)("column parity against the live schema", () => {
     // history and it is not one: `idempotency_key_state_record_ck` ties all
     // three nullable answer columns to `state`, so the absence of a status
     // means "claimed" and can mean nothing else.
-    expect(live).toBe(215);
+    expect(live).toBe(216);
   });
 
   it("raises the same message the database raises for the same bad value", async () => {

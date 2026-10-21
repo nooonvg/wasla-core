@@ -31,7 +31,7 @@
  *    it was provisioned for.
  */
 import { invalid } from "../errors.js";
-import type { Role } from "../../modules/identity-access/domain.js";
+import type { IssuableChannelType, Role } from "../../modules/identity-access/domain.js";
 import type { IdentityService } from "../../modules/identity-access/service.js";
 import type { OrganizationService } from "../../modules/organization/service.js";
 
@@ -41,6 +41,8 @@ export interface ProvisionedCredential {
   readonly session_id: string;
   readonly organization_id: string;
   readonly roles: readonly Role[];
+  /** The channels this credential may issue sessions on (B-42); empty unless asked for. */
+  readonly issues_for_channels: readonly IssuableChannelType[];
   readonly expires_at: string;
   /** Printed once and never recoverable: only the hash is persisted. */
   readonly access_token: string;
@@ -56,6 +58,12 @@ export async function provisionServiceCredential(
     service_name: string;
     organization_id: string;
     roles: readonly Role[];
+    /**
+     * The person-facing channels the service authenticates people on, and so
+     * may issue sessions for (B-42). Defaults to none: a credential that can
+     * issue for nobody is the weaker default, as `--roles` is.
+     */
+    issues_for_channels?: readonly IssuableChannelType[];
     correlation_id: string;
   },
 ): Promise<ProvisionedCredential> {
@@ -74,8 +82,22 @@ export async function provisionServiceCredential(
     service_name: input.service_name,
     display_name: input.service_name,
     source_system: "bootstrap",
+    issues_for_channels: input.issues_for_channels ?? [],
     correlation_id: input.correlation_id,
   });
+  // A repeat run resolves the existing principal and never re-scopes it, so a
+  // different scope asked for is refused loudly — the same reasoning as the
+  // roles check below: never print a credential that quietly cannot do (or can
+  // do more than) what it was provisioned for. Checked before anything else is
+  // written, so a refused re-run leaves no new membership and no new session.
+  const askedScope = [...new Set(input.issues_for_channels ?? [])].sort();
+  const heldScope = [...registered.principal.issues_for_channels].sort();
+  if (askedScope.join(",") !== heldScope.join(",")) {
+    throw invalid(
+      "this service already exists with different issuance channels, and provisioning again does not re-scope it",
+      { asked_issues_for_channels: askedScope, held_issues_for_channels: heldScope },
+    );
+  }
 
   let membershipCreated = false;
   try {
@@ -116,6 +138,7 @@ export async function provisionServiceCredential(
     session_id: session.session_id,
     organization_id: organization.organization_id,
     roles: actor.roles,
+    issues_for_channels: heldScope as IssuableChannelType[],
     expires_at: session.expires_at,
     access_token: token,
     identity_created: registered.created,

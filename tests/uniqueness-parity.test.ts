@@ -154,7 +154,7 @@ const CASES: readonly ParityCase[] = [
       const { identityId } = await seedPrincipal(store);
       return refuse(() =>
         store.identity.insertPrincipal(
-          { principal_id: randomUUID(), identity_id: identityId, created_at: NOW, service_name: null },
+          { principal_id: randomUUID(), identity_id: identityId, created_at: NOW, service_name: null, issues_for_channels: [] },
           NO_SCOPE,
         ),
       );
@@ -170,12 +170,12 @@ const CASES: readonly ParityCase[] = [
       await store.identity.insertIdentity(identity(first), NO_SCOPE);
       await store.identity.insertIdentity(identity(second), NO_SCOPE);
       await store.identity.insertPrincipal(
-        { principal_id: randomUUID(), identity_id: first, created_at: NOW, service_name: "move" },
+        { principal_id: randomUUID(), identity_id: first, created_at: NOW, service_name: "move", issues_for_channels: [] },
         NO_SCOPE,
       );
       return refuse(() =>
         store.identity.insertPrincipal(
-          { principal_id: randomUUID(), identity_id: second, created_at: NOW, service_name: "move" },
+          { principal_id: randomUUID(), identity_id: second, created_at: NOW, service_name: "move", issues_for_channels: [] },
           NO_SCOPE,
         ),
       );

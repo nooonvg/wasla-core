@@ -128,9 +128,19 @@ paths:
         `principal_id` a caller had seen (B-39).
 
 
+        Since B-42 was closed, holding `session.issue` is not enough for a
+        service: it may issue only on a channel its credential was provisioned
+        for (`bootstrap:credential --issue-for`), only for a person with a
+        verified link on that channel, and never for a service or for a
+        principal that could itself issue sessions. `platform_admin` is not
+        scoped. The `session.issued` audit entry names the issuer.
+
+
         `403` therefore means the caller is authenticated and may not issue
-        sessions, and `404` means it may and the principal does not exist —
-        which is only reachable by a caller already entitled to issue.
+        this session: it lacks `session.issue`, the channel is outside its
+        scope, or the principal is not one it may issue for — including a
+        principal that does not exist, so a scoped service cannot tell a real
+        id from an invented one. `404` is reachable only by `platform_admin`.
 
 
         The first credential of an environment cannot come from here, by

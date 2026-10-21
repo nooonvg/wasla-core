@@ -358,6 +358,7 @@ export const COLUMN_SHAPES: Readonly<Record<string, readonly ColumnShape[]>> = {
     { column: "identity_id", type: "uuid", notNull: true },
     { column: "created_at", type: "timestamptz", notNull: true, databaseDefault: "now()" },
     { column: "service_name", type: "text", notNull: false },
+    { column: "issues_for_channels", type: "text array", notNull: true, databaseDefault: "'{}'::text[]" },
   ],
   region: [
     { column: "region_id", type: "uuid", notNull: true },

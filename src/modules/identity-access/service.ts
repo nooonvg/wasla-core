@@ -9,6 +9,8 @@ import { withTransaction } from "../../platform/eventing/unit-of-work.js";
 import {
   type ChannelType,
   type Identity,
+  type IssuableChannelType,
+  ISSUABLE_CHANNEL_TYPES,
   type IdentityLink,
   type Membership,
   type Permission,
@@ -22,6 +24,9 @@ import type { IdentityRepository } from "./ports.js";
 
 const PRODUCER = "wasla-core";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+/** The one refusal for every principal a scoped service may not issue for (B-42). */
+const NOT_ISSUABLE =
+  "this credential may not issue a session for this principal: it must be a person verified on the credential's channel who cannot issue sessions";
 
 export interface AuthenticatedPrincipal {
   principal_id: string;
@@ -41,6 +46,13 @@ export interface RegisterIdentityInput {
    * set by an operator provisioning MARKET's or MOVE's credential.
    */
   service_name?: string | null;
+  /**
+   * The person-facing channels a *service* may issue sessions for (B-42). Only
+   * meaningful with `service_name`, and refused without it. Set once, when the
+   * service's identity is created; an existing service is never re-scoped by a
+   * repeat call — see `provisionServiceCredential`, which refuses the mismatch.
+   */
+  issues_for_channels?: readonly IssuableChannelType[];
   external_id: string;
   display_name?: string | null;
   correlation_id: string;
@@ -71,6 +83,18 @@ export class IdentityService {
   async registerIdentity(input: RegisterIdentityInput): Promise<RegisterIdentityResult> {
     if (!input.external_id.trim()) throw invalid("external_id is required");
     if (!input.correlation_id.trim()) throw invalid("correlation_id is required");
+    const issuesFor = [...new Set(input.issues_for_channels ?? [])];
+    for (const channel of issuesFor) {
+      if (!(ISSUABLE_CHANNEL_TYPES as readonly string[]).includes(channel)) {
+        throw invalid("issues_for_channels may name person-facing channels only", {
+          channel_type: channel,
+          issuable: [...ISSUABLE_CHANNEL_TYPES],
+        });
+      }
+    }
+    if (issuesFor.length > 0 && !input.service_name) {
+      throw invalid("issues_for_channels is only for a service: a person is never a delegated issuer");
+    }
 
     const existingLink = await this.repo.findLink(input.channel_type, input.external_id);
     if (existingLink) {
@@ -97,6 +121,7 @@ export class IdentityService {
       identity_id: identity.identity_id,
       created_at: now.toISOString(),
       service_name: input.service_name ?? null,
+      issues_for_channels: issuesFor.sort(),
     };
     const link = {
       identity_link_id: newId(),
@@ -149,11 +174,81 @@ export class IdentityService {
     return { boundary: this.boundary, outbox: this.outbox, audit: this.audit };
   }
 
-  /** Issues an opaque session token. Only its hash is persisted. */
+  /**
+   * `POST /v1/sessions`: issue a session on behalf of an authenticated caller,
+   * which is the entitlement question `issueSession` below does not ask.
+   *
+   * B-42, closed. Holding `session.issue` is necessary and no longer sufficient
+   * for a service. Four rules, and their order matters:
+   *
+   *  1. **The permission.** Nobody without `session.issue` gets further.
+   *  2. **`platform_admin` is not scoped.** An operator acting through CORE's
+   *     own administration is a person with every permission already; scoping
+   *     them would protect nothing and break the only recovery path there is.
+   *  3. **The channel is the credential's, not the request's.** A service may
+   *     issue only on a channel in its `issues_for_channels`, checked before
+   *     anything is read, so naming a channel it does not speak for learns
+   *     nothing about any principal.
+   *  4. **The person must be one the channel speaks for, and must not be able to
+   *     issue.** The target needs a *verified* link on that channel, must not be
+   *     a service, and must hold no role that grants `session.issue` — so a
+   *     delegated issuer can never mint a `platform_admin`, nor another issuer.
+   *     Every refusal of rule 4 — and an absent principal — is the **same**
+   *     `403`, so a scoped service cannot use this route to tell a real
+   *     principal id from an invented one, or to learn who is an administrator.
+   *
+   * The audit row names the **issuer**. Until this change it named the
+   * principal the session was for (`docs/session-entitlement.md` said
+   * otherwise; measured on `6972a73`: `actor_id` was the target), so "who used a
+   * service credential to become whom" was not answerable from the log.
+   */
+  async issueSessionAs(
+    actor: AuthenticatedPrincipal,
+    input: { principal_id: string; channel_type: ChannelType; correlation_id: string },
+  ): Promise<{ session: Session; token: string }> {
+    this.authorize(actor, "session.issue");
+    if (!actor.roles.includes("platform_admin")) {
+      assertId("principal_id", input.principal_id);
+      const issuer = await this.repo.getPrincipal(actor.principal_id);
+      const scope: readonly ChannelType[] = issuer?.issues_for_channels ?? [];
+      if (!scope.includes(input.channel_type)) {
+        throw forbidden("this credential may not issue sessions on this channel", {
+          channel_type: input.channel_type,
+          issues_for_channels: [...scope],
+        });
+      }
+      if (!(await this.isIssuableBy(input.principal_id, input.channel_type))) {
+        throw forbidden(NOT_ISSUABLE, { channel_type: input.channel_type });
+      }
+    }
+    return await this.issueSession({ ...input, issued_by: actor.principal_id });
+  }
+
+  /** Rule 4 of `issueSessionAs`, answered as one boolean so every refusal looks alike. */
+  private async isIssuableBy(principalId: string, channel: ChannelType): Promise<boolean> {
+    const target = await this.repo.getPrincipal(principalId);
+    if (!target || target.service_name !== null) return false;
+    const links = await this.repo.listLinksForIdentity(target.identity_id);
+    if (!links.some((link) => link.channel_type === channel && link.verified_at !== null)) {
+      return false;
+    }
+    const memberships = await this.repo.listMemberships(target.principal_id);
+    const permissions = permissionsForRoles(memberships.flatMap((m) => m.roles));
+    return !permissions.has("session.issue");
+  }
+
+  /**
+   * Issues an opaque session token. Only its hash is persisted.
+   *
+   * In-process only — bootstrap and tests. Over HTTP the entry point is
+   * `issueSessionAs`, which decides whether the caller may.
+   */
   async issueSession(input: {
     principal_id: string;
     channel_type: ChannelType;
     correlation_id: string;
+    /** The principal that asked; absent for an in-process call (bootstrap), audited as `system`. */
+    issued_by?: string;
   }): Promise<{ session: Session; token: string }> {
     assertId("principal_id", input.principal_id);
     const principal = await this.repo.getPrincipal(input.principal_id);
@@ -179,13 +274,13 @@ export class IdentityService {
     await withTransaction(this.tx, (uow) => {
       uow.stage((scope) => this.repo.insertSession(session, scope));
       uow.audit({
-        actor_type: "principal",
-        actor_id: principal.principal_id,
+        actor_type: input.issued_by === undefined ? "system" : "principal",
+        actor_id: input.issued_by ?? null,
         action: "session.issued",
         entity_type: "session",
         entity_id: session.session_id,
         correlation_id: input.correlation_id,
-        metadata: { channel_type: input.channel_type },
+        metadata: { channel_type: input.channel_type, principal_id: principal.principal_id },
       });
     });
     return { session, token };

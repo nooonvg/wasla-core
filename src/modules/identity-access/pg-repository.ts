@@ -5,6 +5,7 @@ import type {
   Identity,
   IdentityLink,
   IdentityStatus,
+  IssuableChannelType,
   Membership,
   Principal,
   Role,
@@ -37,6 +38,7 @@ interface PrincipalRow {
   identity_id: string;
   created_at: Date;
   service_name: string | null;
+  issues_for_channels: IssuableChannelType[];
 }
 
 interface SessionRow {
@@ -82,6 +84,7 @@ const toPrincipal = (row: PrincipalRow): Principal => ({
   identity_id: row.identity_id,
   created_at: isoRequired(row.created_at),
   service_name: row.service_name,
+  issues_for_channels: [...row.issues_for_channels],
 });
 
 const toSession = (row: SessionRow): Session => ({
@@ -207,20 +210,21 @@ export class PgIdentityRepository implements IdentityRepository {
 
   async insertPrincipal(principal: Principal, scope: TransactionScope = NO_SCOPE): Promise<void> {
     await runner(this.pool, scope).query(
-      `insert into principal (principal_id, identity_id, created_at, service_name)
-       values ($1,$2,$3,$4)`,
+      `insert into principal (principal_id, identity_id, created_at, service_name, issues_for_channels)
+       values ($1,$2,$3,$4,$5)`,
       [
         principal.principal_id,
         principal.identity_id,
         principal.created_at,
         principal.service_name,
+        principal.issues_for_channels,
       ],
     );
   }
 
   async getPrincipal(principalId: string): Promise<Principal | undefined> {
     const result = await this.pool.query<PrincipalRow>(
-      `select principal_id, identity_id, created_at, service_name from principal where principal_id = $1`,
+      `select principal_id, identity_id, created_at, service_name, issues_for_channels from principal where principal_id = $1`,
       [principalId],
     );
     const row = result.rows[0];
@@ -229,7 +233,7 @@ export class PgIdentityRepository implements IdentityRepository {
 
   async findPrincipalByIdentity(identityId: string): Promise<Principal | undefined> {
     const result = await this.pool.query<PrincipalRow>(
-      `select principal_id, identity_id, created_at, service_name from principal where identity_id = $1`,
+      `select principal_id, identity_id, created_at, service_name, issues_for_channels from principal where identity_id = $1`,
       [identityId],
     );
     const row = result.rows[0];

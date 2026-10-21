@@ -152,15 +152,25 @@ found on `/v1/sessions/revoke` cannot recur silently.
 
 ## What this does not claim
 
-**`session.issue` is unscoped.** A `service` credential may mint a session for
-**any** principal, not only for the people its own channel speaks for. MARKET's
-adapter can issue a session for a MOVE courier, and for a `platform_admin`. That
-is **B-42**, recorded rather than half-answered. It is strictly smaller than what
-was closed: it needs a credential CORE issued to a named system, it is revocable,
-and every issuance is audited as `session.issued` against the issuing principal —
-where before it needed nothing at all and named nobody. Scoping it properly means
-deciding what a channel adapter is allowed to speak for, which is the same
-ownership question B-39 raised and one direction deeper.
+**`session.issue` was unscoped — B-42, now closed (2026-10-21).** When this
+milestone shipped, a `service` credential could mint a session for **any**
+principal, including a `platform_admin`, and this paragraph claimed every
+issuance was audited "against the issuing principal". Measured on `6972a73`, the
+audit row actually named the principal the session was *for*.
+
+Both are fixed (migration 0022, `IdentityService.issueSessionAs`, gate
+`tests/session-issuance-scope.test.ts`):
+
+- a service names the person-facing channels it issues for
+  (`principal.issues_for_channels`, set by `bootstrap:credential --issue-for`,
+  empty by default, never `partner_api`, never on a person);
+- it may issue only on one of those channels, only for a person with a verified
+  link on that channel, and never for a service or for a principal whose roles
+  grant `session.issue` — every such refusal, and a nonexistent principal, is
+  one identical `403`;
+- `platform_admin` is not scoped;
+- the `session.issued` audit entry names the issuer as `actor_id` and the person
+  in `metadata.principal_id`; an in-process issuance is audited as `system`.
 
 It does not add a proof-of-possession flow: CORE still never verifies that a
 person controls a channel account. It moves that verification to the adapter,
