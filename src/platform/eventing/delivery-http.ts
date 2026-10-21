@@ -27,7 +27,7 @@ export function registerDeliveryRoutes(
       "a subscription is unique on (subscriber, event_type, endpoint_url): measured on main at bd92b69 a repeat added no event_subscription row, so no event is delivered twice",
     ),
     async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.write");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const created = await registry.register({
       subscriber: ctx.input.requiredText("subscriber"),
       event_type: ctx.input.requiredText("event_type"),
@@ -40,7 +40,7 @@ export function registerDeliveryRoutes(
   });
 
   router.get("/v1/event-subscriptions", [], AUTHENTICATED, async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.read");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const items = await registry.list();
     return { status: 200, body: { count: items.length, items } };
   });
@@ -51,7 +51,7 @@ export function registerDeliveryRoutes(
   router.post("/v1/event-subscriptions/:subscription_id/deactivate", NO_BODY, AUTHENTICATED, natural(
       "deactivation is a transition that is a no-op once made",
     ), async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.write");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const id = ctx.params["subscription_id"] ?? "";
     const items = await registry.list();
     if (!items.some((s) => s.subscription_id === id)) throw notFound("subscription not found");
@@ -62,7 +62,7 @@ export function registerDeliveryRoutes(
   router.post("/v1/event-subscriptions/:subscription_id/activate", NO_BODY, AUTHENTICATED, natural(
       "activation is a transition that is a no-op once made",
     ), async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.write");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const id = ctx.params["subscription_id"] ?? "";
     const items = await registry.list();
     if (!items.some((s) => s.subscription_id === id)) throw notFound("subscription not found");
@@ -73,12 +73,13 @@ export function registerDeliveryRoutes(
   // What CORE has promised to deliver and has not. An empty list is the
   // invariant an operator should expect to see.
   router.get("/v1/event-deliveries/undelivered", [], AUTHENTICATED, async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.read");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const items = await registry.undelivered();
     // The claim token is redacted for the reason the signing secret is: it is a
-    // credential, not a fact about the delivery. `organization.read` is held by
-    // every member of every tenant, and a caller holding a live claim token can
-    // acknowledge a delivery it is not performing.
+    // credential, not a fact about the delivery. The route is operator-only
+    // since B-46 (until then it checked `organization.read`, held by every
+    // member of every tenant), and the redaction stays regardless: a caller
+    // holding a live claim token can acknowledge a delivery it is not performing.
     return { status: 200, body: { count: items.length, items: items.map(redactDelivery) } };
   });
 }

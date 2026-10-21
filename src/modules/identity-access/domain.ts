@@ -147,7 +147,18 @@ export type Permission =
   // exists to obtain sessions for the people it speaks to — and by nothing
   // else. Before milestone 31 the route that consumes this required no
   // credential at all (B-39).
-  | "session.issue";
+  | "session.issue"
+  // Acting on the whole platform rather than inside one tenant: creating a
+  // tenant, the reference geography every product resolves against, the
+  // outbound event subscriptions that receive every tenant's events, and the
+  // notification recipients and log across tenants. Held by `platform_admin`
+  // only. Before B-46 these routes checked `organization.write`/`.read` with no
+  // organization — and an unscoped check passes on presence alone — so an
+  // `org_admin` of one tenant could subscribe a URL of its choosing to every
+  // tenant's events, and an `org_member` could read every tenant's
+  // notifications. `organization.*` keeps its documented meaning: "may change /
+  // read *this* organization", always checked with one.
+  | "platform.operate";
 
 /**
  * Role → permission mapping is data, not branching logic scattered in handlers
@@ -170,6 +181,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "subscription.write",
     "reputation.read",
     "session.issue",
+    "platform.operate",
   ],
   org_admin: [
     "identity.read",

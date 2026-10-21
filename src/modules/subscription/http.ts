@@ -1,3 +1,4 @@
+import { forbidden } from "../../platform/errors.js";
 import { AUTHENTICATED } from "../../platform/http/authentication.js";
 import { NO_BODY, objectBody } from "../../platform/http/body.js";
 import { keyed, natural } from "../../platform/http/retry.js";
@@ -161,8 +162,22 @@ export function registerSubscriptionRoutes(
   });
 
   router.get("/v1/subscriptions/:subscription_id", [], AUTHENTICATED, async (ctx) => {
-    await requirePrincipal(ctx, identity, "subscription.read");
+    const actor = await requirePrincipal(ctx, identity, "subscription.read");
     const result = await billing.getSubscription(ctx.params["subscription_id"] ?? "");
+    // Scoped to the subscription's owner (B-46). `subscription.read` is held by
+    // `org_admin` and `support_agent` *of a tenant*; before B-46 this read
+    // checked it with no organization, so either could read any tenant's
+    // subscription. An organization's subscription is read inside that
+    // organization; a person's only by that person — or by `platform_admin`,
+    // whom `authorize` already lets into every organization.
+    const owner = result.subscription;
+    if (owner.owner_type === "organization") {
+      identity.authorize(actor, "subscription.read", owner.owner_id);
+    } else if (owner.owner_id !== actor.identity_id && !actor.roles.includes("platform_admin")) {
+      throw forbidden("a person's subscription is read by that person", {
+        owner_type: owner.owner_type,
+      });
+    }
     return { status: 200, body: { ...result.subscription, periods: result.periods } };
   });
 

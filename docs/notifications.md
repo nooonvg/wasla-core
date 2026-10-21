@@ -177,8 +177,13 @@ the honest sentence names the possibility and denies the promise.
 ## Who gets told
 
 `notification_recipient` binds `(event_type, identity_id, channel)`, optionally
-scoped to an organization. Registration is operator-only, and it refuses more
-than it accepts:
+scoped to an organization. Registration is operator-only — `platform.operate`,
+held by `platform_admin` alone, as are listing recipients and reading the
+notification log. (Until B-46 these four routes checked `organization.write` /
+`organization.read` with no organization, so an `org_admin` of any tenant could
+register a recipient for another tenant, and an `org_member` of any tenant could
+read every tenant's notifications; both measured.) Registration refuses more than
+it accepts:
 
 - Only channels a person can receive on: `telegram`, `email`, `phone`.
 - Only a **verified** `identity_link` on that channel. An unverified address is

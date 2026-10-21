@@ -54,7 +54,7 @@ export function registerNotificationRoutes(
       "a recipient is unique on its (organization_id, event_type, identity_id, channel) registration: measured on main at bd92b69 a repeat added no notification_recipient row",
     ),
     async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.write");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const created = await recipients.register({
       organization_id: ctx.input.text("organization_id") ?? null,
       event_type: ctx.input.requiredText("event_type"),
@@ -70,7 +70,7 @@ export function registerNotificationRoutes(
     [{ name: "organization_id", kind: "text" }],
     AUTHENTICATED,
     async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.read");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const organizationId = ctx.selection.text("organization_id");
     const items = await recipients.list(organizationId);
     return { status: 200, body: { count: items.length, items } };
@@ -87,7 +87,7 @@ export function registerNotificationRoutes(
       "deactivation is a transition that is already done the second time round",
     ),
     async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.write");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const updated = await recipients.setActive(
       ctx.params["recipient_id"] ?? "",
       false,
@@ -111,7 +111,7 @@ export function registerNotificationRoutes(
     ],
     AUTHENTICATED,
     async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.read");
+    await requirePrincipal(ctx, identity, "platform.operate");
     const status = ctx.selection.text("status") as (typeof STATUSES)[number] | undefined;
     const organizationId = ctx.selection.text("organization_id");
     const limit = ctx.selection.number("limit");
