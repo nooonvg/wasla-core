@@ -202,8 +202,11 @@ defending.
 ## Operating it
 
 Subscriptions are operator-provisioned; there is no self-registration. The
-management routes require `organization.write` (`organization.read` to view),
-which no `service` role holds.
+management routes, and the undelivered read, require `platform.operate`, held by
+`platform_admin` only. Until B-46 they required `organization.write`
+(`organization.read` to view) with no organization, which every `org_admin` (and,
+to view, every `org_member`) of any tenant held — so a tenant administrator could
+subscribe a URL of its choosing to every tenant's events; measured `201`.
 
 - `POST /v1/event-subscriptions`
 - `GET /v1/event-subscriptions`

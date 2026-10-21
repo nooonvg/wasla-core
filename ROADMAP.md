@@ -398,6 +398,8 @@ Nothing.
 | B-43 | **Resolved** in milestone 33 (branch `retry-claim`). A keyed retry is collapsed only after the first call has answered, so two identical requests in flight at the same instant both reach the handler | Found while building milestone 32's mechanism, and stated in `src/platform/http/retry.ts`, in the gate header and in `docs/retry-idempotency.md` rather than implied away. The record is written after the handler answered — it has to be, because the answer is what is recorded — so the window between the first call reaching the handler and its record being written is a window in which a duplicate is not collapsed. On Postgres the record itself is safe (`on conflict (method, scope, key) do nothing`, first answer wins) and the reference backend does the same; what is not safe is the *work*. In practice a caller retries after a timeout, which is seconds after the first call, and the window is the duration of one request — but "in practice" is not a guarantee, and the mechanism must not be read as one | Closing it means claiming the key **before** the work, inside the handler's own transaction, so a concurrent second call finds a claimed record and waits or is refused — which changes the port from "record an answer" to "claim, then complete or release", needs a state column and an abandoned-claim recovery path of the kind the notification worker already has, and must decide what a caller whose twin is still in flight is told (`409`, or a wait). It is a design cycle of its own, not a patch **Resolution:** the key is claimed before the handler runs, in one statement that cannot be interleaved, and the loser is refused with `409` + `retry-after: 1` + `details.claimed_at` rather than made to wait — the reasoning against the wait is in `docs/retry-claim.md`. Two of the three things this cell expected turned out not to be needed: the claim is **not** inside the handler's transaction (it is taken before the handler and settled after, so a rolled-back handler releases rather than un-claims), and the abandoned-claim recovery needed **no worker** — `CLAIM_HORIZON_MS` plus the `do update … where` of the claim itself makes the next request for the key the recovery path. Re-measured before the fix at `8d31133`: 19 duplicate tenants across five attempts to create five, on Postgres, and 5 of 5 on the reference backend every time. Gated by `tests/retry-claim.test.ts` on both backends |
 | B-44 | **Resolved** in milestone 34 (branch `refusal-retryability`). An in-flight idempotency refusal reports `retryable: false` in its body while carrying a `retry-after` header that says the opposite | Found while closing B-43 in milestone 33, and stated in `src/platform/http/retry.ts`, in the `KeyReused` contract description and in `docs/retry-claim.md` rather than smoothed over. `CoreError.retryable` is derived from the error code alone — `unavailable`, `internal` and `rate_limited` are retryable and everything else is not — which is right for every refusal CORE had until now. The in-flight twin is a `conflict`, because a live claim on the key is the state preventing the request, and it is also the one refusal in CORE that **does** come good by itself: that is why it sends `retry-after: 1`. A client that machine-reads `retryable` will not retry it, which defeats the point of the header. No caller is wrong today — the contract says to read `retry-after` on this response — but two fields on one body disagreeing is a defect and not a documentation problem | Letting a refusal override the retryability its code implies, which means a change to `CoreError` and therefore to the error contract of every module that raises one, plus a decision on whether `retryable` stays derived (and gains an override) or becomes declared per refusal. Deliberately not done in milestone 33: reaching into the shared error type while measuring one route's concurrency would have been changing the thing under measurement **Resolution:** the retry time became a property of the refusal — `CoreError.retryAfterSeconds` — and both `retryable` and the `retry-after` header are rendered from it, so they cannot disagree. `IN_FLIGHT_HEADERS` is deleted and `rateLimitHeaders` no longer writes the header. The decision this cell left open went to **derived plus an override** rather than declared per raise site: the code remains a good default for all but a handful of refusals, and a refusal may now say more about itself than its code implies only in the direction CORE can justify, because CORE states a time only when it knows the refusal comes good by itself. Swept before the fix at `cdc09ce`: 4 contradictions in 105 refusals, all the same one. Gated by `tests/refusal-retryability.test.ts` on both backends |
 | B-45 | One person cannot yet reach CORE from Discord, a browser or a native app with proof | `CHANNEL_TYPES` in `src/modules/identity-access/domain.ts` and the `channel_type` CHECK in `db/migrations/0001_core_foundation.sql` allow `telegram`, `phone`, `email`, `web`, `partner_api` only; there is no `discord` or `apple`, no sign-in adapter that verifies a channel's own proof before `session.issue`, no passkeys, no link/unlink of a second method by its owner, no account deletion, and no per-channel session lifetime. Shared roadmap Revision 2 item XR-8.5 (owner instruction of 2026-10-21) | Open. B-42 (XR-3.2) is resolved (2026-10-21): an adapter now issues only on the channels its credential names. B-39 was resolved in milestone 31, so neither prerequisite is open; what remains is the work itself — each sign-in adapter must verify its channel's own proof before it asks for `session.issue`, because CORE still does not. The method list is the owner's (OD-XR-4); the first change is additive (new channel types in a new migration, never editing 0001) |
+| B-46 | ***Resolved*** on 2026-10-21 (cycle "B-46 closed", branch `fix/b46-platform-operate`). Platform-wide routes were guarded by a tenant's permission | Found while designing XR-8.9 (a person opening their own store becomes `org_admin`). Fourteen routes checked `organization.write` / `organization.read` **with no organization**, and `authorize` passes an unscoped permission on presence alone; `org_admin` and `org_member` are roles granted inside one tenant. Measured on `fc4cb81`: an `org_admin` of tenant A got `201` registering an event subscription for every tenant's `core.fulfillment.created` to its own URL, `201` overwriting country `SA` to `Renamed`/`USD`, and `201` creating tenants; an `org_member` of A got `200` on `GET /v1/notifications` across tenants, on the subscriber list and on the undelivered queue. `GET /v1/subscriptions/:id` checked `subscription.read` unscoped: A's `org_admin` and `support_agent` read B's subscription (`200`). | Resolved: new permission `platform.operate` (`platform_admin` only) on all fourteen; subscription read scoped to its owner. Gate `tests/platform-operation-scope.test.ts`. Geography reads stay open to any member (reference data). |
+| B-47 | A permission granted in one organization is honoured in another | `IdentityService.authorize(actor, permission, organization_id)` checks `actor.permissions` (the union over every membership) and then only that `organization_id` is among the actor's memberships. An `org_admin` of A who is an `org_member` of B therefore holds `organization.write` in B. Measured on the B-46 branch: such a principal answered `201` to `POST /v1/memberships` granting a third person `org_admin` **in B**. Found in the B-46 cycle. | Open — fix before XR-8.9 self-service organizations: the permission must come from the membership in that organization (or from `platform_admin`). |
 | B-8 | *Resolved.* Managed repository credentials are available; CORE is published to `uxxxug/wasla-core` by fast-forward without rewriting history. `package-lock.json` is now committed, so installs are reproducible; previously `npm ci` failed outright because no lockfile existed | — | — |
 
 ## Open questions
@@ -7782,3 +7784,49 @@ the same shape.
 rounds (`raceUntilATwinLoses`). Nothing they assert about the refusal changed:
 every `409` they read is still a real twin losing a real race. Twenty quiet
 rounds still fail. Test code only; no file under `src/`, `db/` or `contracts/`.
+
+## Cycle 2026-10-21 — B-46 closed: platform-wide routes need `platform.operate`
+
+**Found while designing XR-8.9.** The shared roadmap's XR-8.9 has a person open
+their own store, which in CORE means a new organization with that person as
+`org_admin` (D-XR-10). Before handing `org_admin` to anybody who asks, this cycle
+listed every place an `org_admin` is trusted, and measured them.
+
+**Measured on `fc4cb81`.** `authorize(actor, permission)` with no organization
+checks presence only. Fourteen routes used it with a tenant's permission:
+
+| Route(s) | Permission it checked | Measured as `org_admin` of another tenant |
+|---|---|---|
+| `POST /v1/organizations` | `organization.write` | `201` — tenants nobody belongs to |
+| `POST /v1/geography/{countries,regions,cities,service-areas}` | `organization.write` | `201` — country `SA` renamed `Renamed`, currency `USD` |
+| `POST /v1/event-subscriptions`, `…/activate`, `…/deactivate` | `organization.write` | `201` — every tenant's `core.fulfillment.created` to the caller's URL |
+| `GET /v1/event-subscriptions`, `GET /v1/event-deliveries/undelivered` | `organization.read` | `200`, also as `org_member` |
+| `POST /v1/notification-recipients`, `…/deactivate` | `organization.write` | `201` — a recipient for tenant B |
+| `GET /v1/notification-recipients`, `GET /v1/notifications` | `organization.read` | `200`, also as `org_member` — every tenant's subjects, bodies and addresses |
+
+And `GET /v1/subscriptions/:id` checked `subscription.read` unscoped: an
+`org_admin` or `support_agent` of A read B's subscription (`200`). The route
+comments already said "operator-only"; the permission did not mean it, and this
+file recorded `organization.write` as "may change who *this* organization is".
+
+**Changed.** One new permission, `platform.operate`, held by `platform_admin`
+only, on all fourteen routes (published in the contract's `Permission` enum).
+`GET /v1/subscriptions/:id` now authorizes against the owner: an organization's
+subscription inside that organization, a person's by that person, and
+`platform_admin` everywhere. Geography **reads** keep `organization.read`
+unscoped on purpose: reference data every product resolves against.
+`docs/outbound-delivery.md` and `docs/notifications.md` say so.
+
+**Gates.** New `tests/platform-operation-scope.test.ts` (7 tests, memory
+backend): run first against the unchanged code it failed 5 of 7 with the figures
+above; after the change all pass. Suite with Postgres: 70 files, 1484 tests, and
+the cluster pass 1/1.
+
+**Found and not closed here — recorded as B-47.** `authorize` flattens
+permissions across **all** of a principal's memberships, then checks only that
+the principal is a member of the named organization. So an `org_member` of B who
+is `org_admin` of A holds `organization.write` *in B* — measured: `201` granting a
+third person `org_admin` in B. That matters the moment a
+person can make themselves `org_admin` of their own store, so it is the next
+cycle, before any self-service organization exists.
+

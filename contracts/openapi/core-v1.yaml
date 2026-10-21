@@ -2788,6 +2788,9 @@ components:
         - subscription.write
         - reputation.read
         - session.issue
+        # B-46: acting on the whole platform (tenants, geography writes, event
+        # subscriptions, cross-tenant notification routes). platform_admin only.
+        - platform.operate
     IdentityResolved:
       type: object
       required: [identity_id, principal_id, status, created]

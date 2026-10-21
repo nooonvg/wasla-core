@@ -22,7 +22,10 @@ export function registerOrganizationRoutes(
       "an organization is identified by the id CORE mints and nothing else — two organizations may share a name and a country — so a repeat creates a second tenant that no later read can tell from the first",
     ),
     async (ctx) => {
-    await requirePrincipal(ctx, identity, "organization.write");
+    // Creating a tenant is the platform's act, not a tenant's (B-46): an
+    // `org_admin` holds `organization.write` for *its own* organization, and an
+    // organization that does not exist yet is nobody's.
+    await requirePrincipal(ctx, identity, "platform.operate");
     // `await`: both of these are async, and a promise handed back as a body is
     // serialised as `{}` — the empty answer milestone 27 measured here.
     const organization = await organizations.create({
