@@ -123,12 +123,11 @@ export function registerIdentityRoutes(
     // Not scoped to an organization: a session is not org-scoped — it carries
     // every membership the principal has — so there is no organization to check
     // it against, and pretending otherwise would be a check that reads as a
-    // boundary and is not one. That `session.issue` is unscoped, so any service
-    // credential can mint a session for any principal rather than only for the
-    // people its own channel speaks for, is recorded as B-42 and is not
-    // half-answered here.
-    await requirePrincipal(ctx, identity, "session.issue");
-    const { session, token } = await identity.issueSession({
+    // boundary and is not one. It **is** scoped to a channel since B-42 was
+    // closed: a service issues only on the channels it was provisioned for, only
+    // for a person verified there, and never for a principal that could itself
+    // issue. The rules and their order live in `IdentityService.issueSessionAs`.
+    const { session, token } = await identity.issueSessionAs(currentPrincipal(ctx), {
       principal_id: ctx.input.requiredText("principal_id"),
       channel_type: ctx.input.requiredText("channel_type") as ChannelType,
       correlation_id: ctx.correlation_id,

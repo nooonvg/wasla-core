@@ -37,6 +37,19 @@ export const CHANNEL_TYPES = ["telegram", "phone", "email", "web", "partner_api"
 
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 
+/**
+ * The channels a service may issue sessions for (B-42, migration 0022).
+ *
+ * Every channel a *person* is reached on — and not `partner_api`, which is how
+ * a *system* reaches CORE: a system's credential is provisioned by an operator
+ * with database access and is never minted by another system. Restated by the
+ * `principal_issues_for_channels_check` constraint; the two are compared by
+ * `tests/session-issuance-scope.test.ts`.
+ */
+export const ISSUABLE_CHANNEL_TYPES = ["telegram", "phone", "email", "web"] as const satisfies readonly ChannelType[];
+
+export type IssuableChannelType = (typeof ISSUABLE_CHANNEL_TYPES)[number];
+
 export interface IdentityLink {
   identity_link_id: string;
   identity_id: string;
@@ -57,6 +70,13 @@ export interface Principal {
    * no request may claim it. `null` for every human principal.
    */
   service_name: string | null;
+  /**
+   * The person-facing channels this principal may issue sessions for (B-42).
+   * Empty for every person, and for every service until an operator names its
+   * channels at provisioning. A service authenticates people on *its* channel;
+   * a session it asks CORE for must be for somebody linked on that channel.
+   */
+  issues_for_channels: IssuableChannelType[];
 }
 
 export interface Session {
@@ -182,9 +202,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   // It also holds `session.issue`, because a channel adapter is how a person who
   // only ever speaks to Telegram or to MARKET gets a CORE credential at all: the
   // adapter authenticates the person the way its channel already does, then asks
-  // CORE for a session on their behalf. That power is not scoped to the people a
-  // given adapter actually speaks for — see B-42 — and the scoping is a separate
-  // question from whether the route requires a credential, which is this one.
+  // CORE for a session on their behalf. Holding the permission is necessary and
+  // not sufficient: since B-42 was closed, a service may issue only on the
+  // channels it was provisioned for (`Principal.issues_for_channels`), only for a
+  // person verified on that channel, and never for a principal that could itself
+  // issue — see `IdentityService.issueSessionAs`.
   service: [
     "fulfillment.request",
     "fulfillment.read",

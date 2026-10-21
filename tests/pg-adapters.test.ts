@@ -252,7 +252,7 @@ describe.each(harnesses)("%s adapters", (_name, harness) => {
         principal_id: randomUUID(),
         identity_id: person.identity_id,
         created_at: AT,
-        service_name: null,
+        service_name: null, issues_for_channels: [],
       };
       await backend.identity.insertPrincipal(principal, NO_SCOPE);
       expect(await backend.identity.getPrincipal(principal.principal_id)).toEqual(principal);
@@ -285,7 +285,7 @@ describe.each(harnesses)("%s adapters", (_name, harness) => {
         principal_id: randomUUID(),
         identity_id: person.identity_id,
         created_at: AT,
-        service_name: null,
+        service_name: null, issues_for_channels: [],
       };
       await backend.identity.insertPrincipal(principal, NO_SCOPE);
 

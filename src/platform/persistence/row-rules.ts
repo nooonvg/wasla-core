@@ -155,6 +155,7 @@ export const VOCABULARIES = {
   identity_status: ["active", "suspended", "merged"],
   organization_status: ["active", "suspended"],
   channel_type: ["telegram", "phone", "email", "web", "partner_api"],
+  issuable_channel_type: ["telegram", "phone", "email", "web"],
   notification_channel: ["telegram", "email", "phone"],
   notification_status: ["pending", "processing", "accepted", "delivered", "failed"],
   outbox_status: ["pending", "published", "dead"],
@@ -243,7 +244,21 @@ export const ROW_RULES = {
   identity_link: [
     vocabulary("channel_type", VOCABULARIES.channel_type, "identity_link_channel_type_check"),
   ],
-  principal: [notEmpty("service_name", "principal_service_name_check")],
+  principal: [
+    notEmpty("service_name", "principal_service_name_check"),
+    // Migration 0022 (B-42): person-facing channels only, and only on a service.
+    rule(
+      "principal_issues_for_channels_check",
+      ["issues_for_channels", "service_name"],
+      (row) => {
+        const channels = at(row, "issues_for_channels");
+        if (!Array.isArray(channels)) return false;
+        const issuable: readonly unknown[] = VOCABULARIES.issuable_channel_type;
+        if (!channels.every((channel) => issuable.includes(channel))) return false;
+        return channels.length === 0 || !isNull(at(row, "service_name"));
+      },
+    ),
+  ],
   membership: [
     rule(
       "membership_roles_check",

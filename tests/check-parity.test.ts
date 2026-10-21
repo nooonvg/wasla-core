@@ -451,6 +451,27 @@ const CASES: readonly CheckCase[] = [
             identity_id: identityId,
             created_at: NOW,
             service_name: "",
+            issues_for_channels: [],
+          },
+          NO_SCOPE,
+        ),
+      );
+    },
+  },
+  {
+    constraint: "principal_issues_for_channels_check",
+    what: "a person carrying issuance channels, which would make them a delegated issuer nobody provisioned",
+    async probe(store) {
+      const identityId = randomUUID();
+      await store.identity.insertIdentity(identity(identityId), NO_SCOPE);
+      return refuse(() =>
+        store.identity.insertPrincipal(
+          {
+            principal_id: randomUUID(),
+            identity_id: identityId,
+            created_at: NOW,
+            service_name: null,
+            issues_for_channels: ["telegram"],
           },
           NO_SCOPE,
         ),

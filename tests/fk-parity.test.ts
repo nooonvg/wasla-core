@@ -220,7 +220,7 @@ const CASES: readonly KeyCase[] = [
     async probe(store) {
       return refuse(() =>
         store.identity.insertPrincipal(
-          { principal_id: absent(), identity_id: absent(), created_at: NOW, service_name: null },
+          { principal_id: absent(), identity_id: absent(), created_at: NOW, service_name: null, issues_for_channels: [] },
           NO_SCOPE,
         ),
       );

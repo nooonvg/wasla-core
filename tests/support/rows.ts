@@ -92,7 +92,7 @@ export async function seedPrincipal(
   const principalId = randomUUID();
   await store.identity.insertIdentity(identity(identityId), NO_SCOPE);
   await store.identity.insertPrincipal(
-    { principal_id: principalId, identity_id: identityId, created_at: NOW, service_name: null },
+    { principal_id: principalId, identity_id: identityId, created_at: NOW, service_name: null, issues_for_channels: [] },
     NO_SCOPE,
   );
   return { identityId, principalId };

@@ -225,7 +225,7 @@ async function populate(store: Persistence): Promise<Population> {
       principal_id: principalId,
       identity_id: identities[0] as string,
       created_at: at(0),
-      service_name: null,
+      service_name: null, issues_for_channels: [],
     },
     NO_SCOPE,
   );
