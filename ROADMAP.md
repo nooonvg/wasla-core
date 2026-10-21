@@ -7888,3 +7888,10 @@ not awaiting the membership stage fails the atomicity case. Declaration gates
 updated for the new route (authentication 49, bodies 30, responses and headers
 53, keyed set and conflict drivers include it).
 Postgres suite: 71 files, 1499 tests, cluster 1/1; default run 909.
+
+## Cycle 2026-10-21 — ecosystem roadmap Revision 4
+
+`docs/ecosystem/ECOSYSTEM_ROADMAP.md` Revision 4 (identical in the three
+repositories) records B-46, B-47 and XR-8.9's CORE part in its §9 with the PRs
+and measurements above, adds owner decision OD-XR-10 (the self-service
+organization limit) and one unmeasured line in §7. No code changed.
