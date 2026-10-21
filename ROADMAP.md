@@ -7766,3 +7766,19 @@ recorded closed by the cycle above (B-42, PR #3, `a46bdb5`). XR-4.2 now names
 **Measured this cycle.** Only documents changed: `ROADMAP.md` and
 `docs/ecosystem/ECOSYSTEM_ROADMAP.md`; `check-ecosystem-sync.mjs --offline` OK
 (Revision 3). No file under `src/`, `db/` or `contracts/` changed.
+
+## Cycle 2026-10-21 — a gate that measured the scheduler (B-44 in-flight race)
+
+**Measured.** CI run 39610388438 (push of `e1e8484`, the B-42 change, which
+touches nothing in retry handling) failed one case on PostgreSQL:
+`tests/refusal-retryability.test.ts` › "answers an in-flight twin retryable" —
+five concurrent identical keyed writes produced **zero** `409`s, i.e. they
+serialised. The pull-request run of the same commit, and every other run, passed.
+The case asserted "at least one twin loses" from a single round, which is an
+interleaving and not a property of CORE; "comes good by itself" next to it had
+the same shape.
+
+**Changed.** Both cases now race on a fresh key until a twin loses, at most 20
+rounds (`raceUntilATwinLoses`). Nothing they assert about the refusal changed:
+every `409` they read is still a real twin losing a real race. Twenty quiet
+rounds still fail. Test code only; no file under `src/`, `db/` or `contracts/`.

@@ -59,7 +59,7 @@ import {
 } from "../src/platform/http/rate-limit.js";
 import { IN_FLIGHT_RETRY_AFTER_SECONDS } from "../src/platform/http/retry.js";
 import { runScenario } from "./support/http-scenario.js";
-import { ORGANIZATION, retryHarnesses } from "./support/retry-harness.js";
+import { ORGANIZATION, retryHarnesses, type Ground } from "./support/retry-harness.js";
 
 interface Refusal {
   readonly how: string;
@@ -241,15 +241,41 @@ describe("a refusal states its retry time once", () => {
   });
 });
 
+/**
+ * Races five identical keyed writes, on a fresh key each round, until one twin
+ * is refused as in-flight — at most `RACE_ROUNDS` rounds.
+ *
+ * Why not one round. On PostgreSQL the five requests share a pool of four and
+ * whether any twin overlaps the winner's claim is an interleaving, not a
+ * guarantee: measured on CI on 2026-10-21 (run 39610388438, `e1e8484`, a change
+ * that touched nothing here), all five serialised once and the gate failed with
+ * zero `409`s while the identical run beside it passed. A single round made the
+ * gate measure the scheduler. Racing again changes nothing the cases assert —
+ * every in-flight answer is still a real twin losing a real race — it only
+ * stops one quiet round from being read as a defect. Twenty rounds of none would
+ * still fail, and would be worth reading.
+ */
+const RACE_ROUNDS = 20;
+type Answer = Awaited<ReturnType<Ground["post"]>>;
+async function raceUntilATwinLoses(app: Ground): Promise<{ answers: Answer[]; key: string }> {
+  let last: { answers: Answer[]; key: string } | undefined;
+  for (let round = 0; round < RACE_ROUNDS; round += 1) {
+    const key = randomUUID();
+    const answers = await Promise.all(
+      Array.from({ length: 5 }, () => app.post("/v1/organizations", ORGANIZATION, key)),
+    );
+    last = { answers, key };
+    if (answers.some((a) => a.status === 409)) return last;
+  }
+  return last!;
+}
+
 describe.each(retryHarnesses(process.env.DATABASE_URL))(
   "the four refusals B-44 was about, on '$name'",
   (harness) => {
     it("answers an in-flight twin retryable, with the time it stated", async () => {
       const app = await harness.make();
-      const key = randomUUID();
-      const answers = await Promise.all(
-        Array.from({ length: 5 }, () => app.post("/v1/organizations", ORGANIZATION, key)),
-      );
+      const { answers } = await raceUntilATwinLoses(app);
       const inFlight = answers.filter((a) => a.status === 409);
       // Not asserted to be four: how many twins lose is an interleaving, and a
       // gate that fixed the number would measure the machine. At least one, and
@@ -286,10 +312,7 @@ describe.each(retryHarnesses(process.env.DATABASE_URL))(
 
     it("comes good by itself, which is what retryable: true promised", async () => {
       const app = await harness.make();
-      const key = randomUUID();
-      const answers = await Promise.all(
-        Array.from({ length: 5 }, () => app.post("/v1/organizations", ORGANIZATION, key)),
-      );
+      const { answers, key } = await raceUntilATwinLoses(app);
       const refusedTwin = answers.find((a) => a.status === 409);
       expect(refusedTwin).toBeDefined();
       // The flag is a claim about the world, not a label: obeying it has to
