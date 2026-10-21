@@ -19,7 +19,7 @@
  *    second capture asks for money the hold no longer has.
  *  - **The mechanism is declared, not discovered.** Each driver says whether it
  *    reaches the conflict through a domain rule or through the platform's
- *    key-reuse refusal, and the census of mechanisms is asserted exactly. Three
+ *    key-reuse refusal, and the census of mechanisms is asserted exactly. Some
  *    keyed creates have no domain conflict at all — `POST /v1/geography/countries`
  *    upserts, by a decision recorded in its own route — so their documented `409`
  *    is only reachable by a caller reusing a key with a different request. That is
@@ -200,6 +200,12 @@ const DRIVERS: readonly Driver[] = [
     mechanism: "key_reuse",
     message: "this Idempotency-Key was already used with a different request",
     run: (context) => reuseKey(context, "POST /v1/organizations"),
+  },
+  {
+    label: "POST /v1/me/organizations",
+    mechanism: "key_reuse",
+    message: "this Idempotency-Key was already used with a different request",
+    run: (context) => reuseKey(context, "POST /v1/me/organizations"),
   },
   {
     label: "POST /v1/payment-authorizations",
@@ -471,18 +477,20 @@ describe("the documented conflict surface", () => {
     for (const driver of DRIVERS) {
       byMechanism.set(driver.mechanism, [...(byMechanism.get(driver.mechanism) ?? []), driver.label]);
     }
-    // Three keyed creates have no domain conflict of their own: countries and
+    // Four keyed creates have no domain conflict of their own: countries and
     // cities upsert on their natural key by a recorded decision, and an
-    // organization has no uniqueness rule at all. Their documented `409` is the
+    // organization — opened by an operator or by its own administrator
+    // (XR-8.9) — has no uniqueness rule at all. Their documented `409` is the
     // platform's refusal of a key reused with a different request. If a domain
     // conflict is ever added to one of them, this list shrinks and the driver
     // above it has to say what the new rule is.
     expect(byMechanism.get("key_reuse")?.sort()).toEqual([
       "POST /v1/geography/cities",
       "POST /v1/geography/countries",
+      "POST /v1/me/organizations",
       "POST /v1/organizations",
     ]);
-    expect(byMechanism.get("domain")?.length).toBe(DRIVERS.length - 3);
+    expect(byMechanism.get("domain")?.length).toBe(DRIVERS.length - 4);
   });
 
   it("keeps the clock-moving driver last, since it expires every session", () => {
@@ -519,7 +527,7 @@ describe("the documented conflict surface", () => {
       if (again.status === 409) produced.push(label);
     }
     expect(produced.filter((label) => !documents409.has(label))).toEqual([]);
-    // Exactly the four keyed creates whose recorded body has a field this rule
+    // Exactly the five keyed creates whose recorded body has a field this rule
     // can change into something still valid. `POST /v1/subscriptions` is keyed
     // too, and its documented `409` is driven by the domain driver above; every
     // field of its body is an identifier, so changing one answers `400` rather
@@ -528,6 +536,7 @@ describe("the documented conflict surface", () => {
       "POST /v1/geography/cities",
       "POST /v1/geography/countries",
       "POST /v1/geography/service-areas",
+      "POST /v1/me/organizations",
       "POST /v1/organizations",
     ]);
   }, 120_000);

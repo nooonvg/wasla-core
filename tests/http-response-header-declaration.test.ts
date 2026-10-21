@@ -116,7 +116,7 @@ describe("declared response headers", () => {
 
   it("answers every operation with a correlation id that matches the body's", async () => {
     const scenario = await runScenario();
-    expect(scenario.answers.size).toBe(52);
+    expect(scenario.answers.size).toBe(53);
     const shape = declaredResponseHeader("x-correlation-id")!.shape;
     const missing: string[] = [];
     for (const [label, answer] of scenario.answers) {

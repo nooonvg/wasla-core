@@ -326,6 +326,11 @@ paths:
         - $ref: "#/components/parameters/IdempotencyKey"
       summary: Create an organization (tenant)
       description: >
+        Requires `platform.operate` (`platform_admin` only) since B-46: creating
+        a tenant is the platform's act. A person opening an organization of
+        their own uses `POST /v1/me/organizations`.
+
+
         An organization is identified by the id CORE mints and by nothing
         else: two organizations may share a name and a country, so a repeat of
         this call creates a second tenant that no later read can tell from the
@@ -374,6 +379,60 @@ paths:
             x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
             idempotent-replay: { $ref: "#/components/headers/IdempotentReplay" }
           description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/KeyReused" }
+  /v1/me/organizations:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      summary: Open an organization of your own, as its administrator (XR-8.9)
+      description: >
+        Any person may open an organization and becomes its `org_admin` in the
+        same transaction: what MARKET calls opening a store (D-XR-10). Both
+        audit rows name the person. A service credential is refused `403`, and
+        so is a person who already administers three organizations (the
+        self-service limit, returned as `details.limit`); beyond that an
+        operator creates the tenant with `POST /v1/organizations`.
+
+
+        `org_admin` can be handed to anybody only because it no longer reaches
+        past its own organization: B-46 moved every platform-wide route to
+        `platform.operate`, and B-47 reads a permission from the membership it
+        was granted in. The new role appears in the caller's next
+        `GET /v1/sessions/current` without a new session.
+
+
+        Retry safety is that of `POST /v1/organizations`: an `Idempotency-Key`
+        header is required, a repeat with the same body replays the recorded
+        answer and opens nothing, and the same key with a different body is
+        refused with 409 `conflict`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, country_code]
+              properties:
+                name: { type: string, minLength: 1 }
+                country_code: { type: string, pattern: "^[A-Z]{2}$" }
+      responses:
+        "500": { $ref: "#/components/responses/Error" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "201":
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+            idempotent-replay: { $ref: "#/components/headers/IdempotentReplay" }
+          description: Opened; the caller is its `org_admin`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Organization" }

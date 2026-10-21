@@ -2,7 +2,7 @@ import { AUTHENTICATED } from "../../platform/http/authentication.js";
 import { objectBody } from "../../platform/http/body.js";
 import { keyed } from "../../platform/http/retry.js";
 import type { Router } from "../../platform/http/router.js";
-import { requirePrincipal } from "../identity-access/http.js";
+import { currentPrincipal, requirePrincipal } from "../identity-access/http.js";
 import type { AuthenticatedPrincipal, IdentityService } from "../identity-access/service.js";
 import type { OrganizationService } from "./service.js";
 
@@ -35,6 +35,41 @@ export function registerOrganizationRoutes(
     });
     return { status: 201, body: organization };
   });
+
+  // XR-8.9: any person opens an organization of their own and becomes its
+  // `org_admin` — what MARKET calls opening a store (D-XR-10). Safe to offer
+  // only because B-46 moved every platform-wide power off `org_admin` and B-47
+  // confined `org_admin` to the organization it was granted in.
+  router.post(
+    "/v1/me/organizations",
+    objectBody(
+      { name: "name", kind: "text", required: true },
+      { name: "country_code", kind: "text", required: true },
+    ),
+    AUTHENTICATED,
+    keyed(
+      "an organization is identified by the id CORE mints and nothing else, so a repeat would open a second store for the same person and count against their self-service limit",
+    ),
+    async (ctx) => {
+      const actor = currentPrincipal(ctx);
+      identity.assertMayOpenOrganization(actor);
+      const organization = await organizations.openOwn(
+        {
+          name: ctx.input.requiredText("name"),
+          country_code: ctx.input.requiredText("country_code"),
+          correlation_id: ctx.correlation_id,
+          owner_principal_id: actor.principal_id,
+        },
+        (uow, created) =>
+          identity.grantOwnerWithin(uow, {
+            actor,
+            organization_id: created.organization_id,
+            correlation_id: ctx.correlation_id,
+          }),
+      );
+      return { status: 201, body: organization };
+    },
+  );
 
   router.get("/v1/organizations/:organization_id", [], AUTHENTICATED, async (ctx) => {
     const organizationId = ctx.params["organization_id"]!;

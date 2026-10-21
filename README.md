@@ -46,7 +46,7 @@ byte-identical in the three repositories and checked by `ecosystem-sync.yml`.
 | Notifications: recipients, tenant-scoped fan-out, rendering, dispatcher with leases | implemented; provider delivery confirmation missing (D-8) |
 | Reputation: append-only signals, exactly-once ingestion, retraction marker, standing derived on every read | implemented; no producer publishes `market.review.*` yet, and weighting/decay/thresholds are undecided (B-31…B-34) |
 
-**898 tests** pass in the dependency-free default run and **1489** with
+**909 tests** pass in the dependency-free default run and **1500** with
 `DATABASE_URL` set, because the database-backed files stop being skipped and the
 dual-backend suites run their Postgres half. Both numbers are the sum of two
 passes — `npm test` runs `test:suite` and then `test:cluster`, and the second
@@ -62,7 +62,7 @@ count these records carried for twelve cycles was only a one-run total being
 compared with a two-run split (147 + 1 = 148). See `docs/test-partition.md`.
 
 (The line has read 385/687, then
-529/976, then 550/1015, then 557/1026, then 574/1047, then 584/1063, then 589/1075, then 595/1125, then 599/1162, then 648/1211, then 658/1221, then 674/1237, then 689/1252, then 700/1263, then 709/1272, then 717/1280, then 733/1296, then 758/1321, then 769/1340, then 781/1362, then 789/1373, then 799/1383, then 806/1390, then 812/1396, then 819/1403, then 825/1409, then 849/1409, then 855/1409, then 862/1409, then 865/1412, then 866/1454, then 868/1458, then 887/1478, then 894/1485, then 898/1489; the
+529/976, then 550/1015, then 557/1026, then 574/1047, then 584/1063, then 589/1075, then 595/1125, then 599/1162, then 648/1211, then 658/1221, then 674/1237, then 689/1252, then 700/1263, then 709/1272, then 717/1280, then 733/1296, then 758/1321, then 769/1340, then 781/1362, then 789/1373, then 799/1383, then 806/1390, then 812/1396, then 819/1403, then 825/1409, then 849/1409, then 855/1409, then 862/1409, then 865/1412, then 866/1454, then 868/1458, then 887/1478, then 894/1485, then 898/1489, then 909/1500; the
 counts are updated rather than
 removed, and the earlier pairs are kept in this parenthesis so the growth stays
 auditable.)
