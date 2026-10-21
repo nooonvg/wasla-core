@@ -7754,3 +7754,15 @@ assertion (direction 2). Existing service credentials must be re-provisioned
 with `--issue-for` before they can issue again; there are none in any deployed
 environment (XR-3.1/B-5: CORE has no environment yet).
 
+
+## Cycle 2026-10-21 — shared roadmap Revision 3: measured status (§9)
+
+`docs/ecosystem/ECOSYSTEM_ROADMAP.md` moves to Revision 3, byte-identical in
+`nooonvg/wasla` and `nooonvg/ceezr`. It adds no decision: a new §9 carries the
+measured state of each shared item with its merged evidence, and XR-3.2 is
+recorded closed by the cycle above (B-42, PR #3, `a46bdb5`). XR-4.2 now names
+`bootstrap:credential --issue-for`, and XR-8.5 is no longer blocked by XR-3.2.
+
+**Measured this cycle.** Only documents changed: `ROADMAP.md` and
+`docs/ecosystem/ECOSYSTEM_ROADMAP.md`; `check-ecosystem-sync.mjs --offline` OK
+(Revision 3). No file under `src/`, `db/` or `contracts/` changed.
