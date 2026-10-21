@@ -17,11 +17,16 @@ coordination.
 
 | System | Repository | Owns |
 |---|---|---|
-| WASLA MOVE | `noor-seez/ceezr` | drivers, vehicles, operational jobs, rides, delivery execution, dispatch, tracking, POD |
-| WASLA MARKET | `skyosv10-art/wasla` | merchants, stores, products, inventory, commercial orders, search |
+| WASLA MOVE | [`nooonvg/ceezr`](https://github.com/nooonvg/ceezr) | drivers, vehicles, operational jobs, rides, delivery execution, dispatch, tracking, POD |
+| WASLA MARKET | [`nooonvg/wasla`](https://github.com/nooonvg/wasla) | merchants, stores, products, inventory, commercial orders, search |
 
 The three repositories are permanently separate. No monorepo, no shared runtime
 package, no cross-database access.
+
+The cross-repository plan — which system owns which domain, the synchronized
+phases `XR-0`…`XR-7`, and every owner decision that blocks them — is
+[`docs/ecosystem/ECOSYSTEM_ROADMAP.md`](docs/ecosystem/ECOSYSTEM_ROADMAP.md), kept
+byte-identical in the three repositories and checked by `ecosystem-sync.yml`.
 
 ## What runs today
 
