@@ -1,0 +1,39 @@
+# XR-0.1 — the shared ecosystem roadmap must be identical in nooonvg/wasla,
+# nooonvg/wasla-core and nooonvg/ceezr. See docs/ecosystem/ECOSYSTEM_ROADMAP.md §6.
+# This workflow file is kept identical in the three repositories.
+name: Ecosystem sync
+
+on:
+  pull_request:
+    paths:
+      - "docs/ecosystem/**"
+      - ".github/workflows/ecosystem-sync.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/ecosystem/**"
+      - ".github/workflows/ecosystem-sync.yml"
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ecosystem-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Structure (offline)
+        run: node docs/ecosystem/check-ecosystem-sync.mjs --offline
+      - name: Identical across the three repositories (advisory on pull requests)
+        if: github.event_name == 'pull_request'
+        run: node docs/ecosystem/check-ecosystem-sync.mjs --advisory
+      - name: Identical across the three repositories (strict on main)
+        if: github.event_name != 'pull_request'
+        run: node docs/ecosystem/check-ecosystem-sync.mjs

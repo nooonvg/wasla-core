@@ -7625,3 +7625,41 @@ and histogram `_sum` / `_count` pairs for both duration metrics.
 
 No backend change. No new metric. No schema change. Test counts
 unchanged.
+
+## Cycle 2026-10-21 — the shared ecosystem roadmap (XR-0)
+
+**What changed.** `docs/ecosystem/ECOSYSTEM_ROADMAP.md` (Revision 1) is added,
+byte-identical to the copies added in the same cycle to `nooonvg/wasla` (MARKET)
+and `nooonvg/ceezr` (MOVE), with `docs/ecosystem/check-ecosystem-sync.mjs` and
+`.github/workflows/ecosystem-sync.yml` proving the three copies match (advisory on
+pull requests, strict on `main` and nightly). The README's *Related repositories*
+table now names the repositories where the three systems actually live
+(`nooonvg/ceezr`, `nooonvg/wasla`) instead of `noor-seez/ceezr` and
+`skyosv10-art/wasla`.
+
+**Why.** Owner instruction of 2026-10-21 (quoted in §1 of the shared roadmap): one
+real, complete roadmap, synchronized across the three repositories, with authority
+to remove delivery from MARKET in favour of MOVE.
+
+**What it means for CORE.** No ownership boundary changes, so no new ADR is
+required (`docs/adr/README.md`: an ADR is needed for a new synchronous path or a
+boundary change). The decisions D-XR-1…D-XR-8 *apply* ADR 0001, 0002, 0006 and
+0007: MOVE alone executes delivery, MARKET keeps the commercial order, and the two
+meet only through `core.fulfillment.*`, `market.order.created` and `move.job.*`.
+CORE's track in the shared roadmap is built only from this file's own rows:
+
+| Shared item | CORE work | Blocked by |
+|---|---|---|
+| XR-3.1 | an environment for CORE | B-5, then B-6 for production |
+| XR-3.2 | scope `session.issue` before any system holds a service credential | B-42 (open) |
+| XR-3.3 | degradation rules | B-35 / milestone 11 (ADR 0010 text absent) |
+| XR-4 | first journey: store order → fulfillment → MOVE job → closed fulfillment | XR-3, MOVE `DEP-CORE-001..008`, B-20/B-30 for the failure cases |
+| XR-4.5 / XR-6.3 | the money leg | B-4 and MOVE F12-11 (no payment provider) |
+| XR-6.1 | one identity | B-2, B-3 |
+| XR-6.2 | entitlement endpoint | B-14…B-19 |
+| XR-6.4 | reputation producers | B-31…B-34 |
+| XR-6.5 | live Telegram adapter | D-8 |
+
+**Measured this cycle (local, `995f4fa`).** `npm ci`; `tsc --noEmit` clean;
+`WASLA_TEST_PASS=suite npx vitest run` → 868 passed, 147 skipped. The database and
+cluster passes were not run. No file under `src/`, `db/` or `contracts/` changed.
