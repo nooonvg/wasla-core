@@ -123,7 +123,9 @@ and both reasons are worth keeping.
 
 **F2 passed because no case in the file held the one principal that can tell the
 two permissions apart.** An outsider holds neither `organization.read` nor
-`organization.write`; an `org_admin` holds neither *outside* its own tenant. Both
+`organization.write`; an `org_admin` holds neither *outside* its own tenant (true
+by construction only since B-47: until then a principal that was `org_admin` of
+A and merely `org_member` of B held `organization.write` in B too). Both
 answer `403` under either permission, so every case passed while the route
 accepted a permission that any `org_member` holds — meaning any colleague could
 have promoted themselves to administrator, which is most of the original defect

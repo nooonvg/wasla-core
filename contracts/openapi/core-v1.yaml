@@ -2801,7 +2801,7 @@ components:
         created: { type: boolean }
     AuthenticatedPrincipal:
       type: object
-      required: [principal_id, identity_id, session_id, organization_ids, roles, permissions]
+      required: [principal_id, identity_id, session_id, organization_ids, memberships, roles, permissions]
       properties:
         principal_id: { type: string, format: uuid }
         identity_id: { type: string, format: uuid }
@@ -2809,6 +2809,21 @@ components:
         organization_ids:
           type: array
           items: { type: string, format: uuid }
+        memberships:
+          type: array
+          description: >-
+            Each membership with its own roles. `roles` and `permissions` are the
+            union across them, i.e. what the principal may do somewhere; inside
+            one organization only that membership's roles count (B-47), except
+            for `platform_admin`, which acts in every organization.
+          items:
+            type: object
+            required: [organization_id, roles]
+            properties:
+              organization_id: { type: string, format: uuid }
+              roles:
+                type: array
+                items: { $ref: "#/components/schemas/Role" }
         roles:
           type: array
           items: { $ref: "#/components/schemas/Role" }
