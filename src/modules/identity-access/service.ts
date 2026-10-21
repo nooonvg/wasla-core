@@ -5,7 +5,7 @@ import { assertId, hashToken, newId, newToken } from "../../platform/ids.js";
 import type { AuditLog } from "../../platform/audit/audit.js";
 import { makeEvent } from "../../platform/eventing/envelope.js";
 import type { OutboxStore } from "../../platform/eventing/outbox.js";
-import { withTransaction } from "../../platform/eventing/unit-of-work.js";
+import { type UnitOfWork, withTransaction } from "../../platform/eventing/unit-of-work.js";
 import {
   type ChannelType,
   type Identity,
@@ -24,6 +24,11 @@ import type { IdentityRepository } from "./ports.js";
 
 const PRODUCER = "wasla-core";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+/**
+ * How many organizations one person may administer through self-service
+ * (XR-8.9) before an operator has to be asked. A guard, not a product rule.
+ */
+export const SELF_SERVICE_ORGANIZATION_LIMIT = 3;
 /** The one refusal for every principal a scoped service may not issue for (B-42). */
 const NOT_ISSUABLE =
   "this credential may not issue a session for this principal: it must be a person verified on the credential's channel who cannot issue sessions";
@@ -427,6 +432,58 @@ export class IdentityService {
         correlation_id: input.correlation_id,
         metadata: { organization_id: input.organization_id, roles: input.roles },
       });
+    });
+    return membership;
+  }
+
+  /**
+   * XR-8.9: may this caller open an organization of their own?
+   *
+   * A person may; a system may not — a service credential speaks for a channel,
+   * and a store owned by a channel adapter is nobody's store. And a person may
+   * hold at most `SELF_SERVICE_ORGANIZATION_LIMIT` organizations as `org_admin`
+   * before asking an operator: the number is a guard against one account
+   * minting tenants in a loop, not a product rule, and the owner may change it
+   * (recorded in ROADMAP.md, cycle "XR-8.9").
+   */
+  assertMayOpenOrganization(actor: AuthenticatedPrincipal): void {
+    if (actor.service_name !== null) {
+      throw forbidden("a service credential does not open organizations of its own");
+    }
+    const administered = actor.memberships.filter((m) => m.roles.includes("org_admin")).length;
+    if (administered >= SELF_SERVICE_ORGANIZATION_LIMIT) {
+      throw forbidden("this person already administers as many organizations as self-service allows", {
+        limit: SELF_SERVICE_ORGANIZATION_LIMIT,
+      });
+    }
+  }
+
+  /**
+   * Grants the caller `org_admin` of an organization being created in the same
+   * unit of work (XR-8.9). In-transaction by construction: a store that exists
+   * with no administrator, or an administrator of a store that does not, is the
+   * state this refuses to be able to produce.
+   */
+  async grantOwnerWithin(
+    uow: UnitOfWork,
+    input: { actor: AuthenticatedPrincipal; organization_id: string; correlation_id: string },
+  ): Promise<Membership> {
+    const membership: Membership = {
+      membership_id: newId(),
+      principal_id: input.actor.principal_id,
+      organization_id: input.organization_id,
+      roles: ["org_admin"],
+      created_at: this.clock.now().toISOString(),
+    };
+    uow.stage((scope) => this.repo.insertMembership(membership, scope));
+    uow.audit({
+      actor_type: "principal",
+      actor_id: input.actor.principal_id,
+      action: "membership.granted",
+      entity_type: "membership",
+      entity_id: membership.membership_id,
+      correlation_id: input.correlation_id,
+      metadata: { organization_id: input.organization_id, roles: membership.roles, self_service: true },
     });
     return membership;
   }

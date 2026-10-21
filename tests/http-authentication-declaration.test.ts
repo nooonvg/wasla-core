@@ -174,7 +174,7 @@ describe("every route declares whether it needs a credential", () => {
     // By name, not by count: a route added later that quietly declares itself
     // anonymous fails here, which is the whole point of writing the list out.
     expect(anonymous.sort()).toEqual([...ANONYMOUS].sort());
-    expect(registrations.filter((route) => route.authentication.required).length).toBe(48);
+    expect(registrations.filter((route) => route.authentication.required).length).toBe(49);
   });
 
   it("makes every anonymous route say why, in a sentence", () => {
@@ -443,7 +443,7 @@ describe("the contract publishes the refusal", () => {
     // two session routes require a credential.
     expect(missing).toEqual([]);
     expect(spurious).toEqual([]);
-    expect(documented.size).toBe(48);
+    expect(documented.size).toBe(49);
   });
 
   it("explains the ordering where a client will read it", () => {

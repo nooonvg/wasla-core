@@ -149,12 +149,13 @@ describe("retry declarations", () => {
         .filter((route) => route.retry.mechanism === "keyed")
         .map((route) => `${route.method} ${contractPath(route.template)}`),
     );
-    // Asserted as a set and not as a count: a count agrees with any five routes,
-    // including five that are not these five.
+    // Asserted as a set and not as a count: a count agrees with any six routes,
+    // including six that are not these six.
     expect([...declared].sort()).toEqual([
       "POST /v1/geography/cities",
       "POST /v1/geography/countries",
       "POST /v1/geography/service-areas",
+      "POST /v1/me/organizations",
       "POST /v1/organizations",
       "POST /v1/subscriptions",
     ]);

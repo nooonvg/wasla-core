@@ -7851,3 +7851,40 @@ per organization.
 unchanged `src/` two of them fail (the `201` above, and no `memberships`).
 Postgres suite: 70 files, 1488 tests, cluster 1/1; default run 898.
 
+
+## Cycle 2026-10-21 — XR-8.9 (CORE part): a person opens an organization of their own
+
+**Why now.** The ecosystem roadmap's XR-8.9 (D-XR-10) lets any account become a
+store owner from the same app. In CORE that is opening an organization and
+administering it, and until this cycle only an operator could create one
+(`POST /v1/organizations`, `platform.operate` since B-46). Handing `org_admin` to
+anybody was unsafe before B-46 and B-47, both measured and closed this week; it
+is what made this route possible, not what it adds.
+
+**Changed.** `POST /v1/me/organizations` (`AUTHENTICATED`, `Idempotency-Key`
+required, body `name` + `country_code`): the organization and the caller's
+`org_admin` membership commit in one unit of work (`OrganizationService.openOwn`
++ `IdentityService.grantOwnerWithin`), and both audit rows name the person
+(`actor_type: principal`; the grant carries `self_service: true`). The role shows
+in the caller's next `GET /v1/sessions/current` without a new session. A service
+credential is refused `403`. `POST /v1/organizations`'s description now states
+its `platform.operate` requirement. Contract: one operation added (53).
+
+**Proposed, for the owner to decide.** `SELF_SERVICE_ORGANIZATION_LIMIT = 3`: a
+person who already administers three organizations is refused `403` with
+`details.limit`, and an operator can still create more. The number is a guard
+against one account minting tenants in a loop, chosen here, not a product rule;
+change it in `src/modules/identity-access/service.ts`. **Known limit of the
+guard:** it is read from the memberships loaded at authentication, so two
+concurrent requests from one person at two administered organizations can both
+pass. Making it an invariant needs a lock on the principal; not done.
+
+**Gates.** `tests/self-service-organization.test.ts`, 11 cases (open, roles on
+next request, audit actor, own-organization-only, B-47 re-checked against a
+self-opened organization, service refused, limit, member-only memberships not
+counted, replay and key reuse `409`, body validation, anonymous `401`,
+atomicity). Falsified: disabling the service and limit checks fails 2 cases;
+not awaiting the membership stage fails the atomicity case. Declaration gates
+updated for the new route (authentication 49, bodies 30, responses and headers
+53, keyed set and conflict drivers include it).
+Postgres suite: 71 files, 1499 tests, cluster 1/1; default run 909.

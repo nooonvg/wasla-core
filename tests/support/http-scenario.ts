@@ -201,6 +201,12 @@ export async function runScenario(): Promise<Scenario> {
     "/v1/organizations/:organization_id",
     `/v1/organizations/${organizationId}`,
   );
+  // XR-8.9: the administrator opening an organization of its own. The
+  // administrator is a person (a session principal), so this answers 201.
+  await call("POST", "/v1/me/organizations", "/v1/me/organizations", {
+    name: "Own Org",
+    country_code: "SA",
+  });
 
   // ── money ──
   const wallet = await call("POST", "/v1/wallets", "/v1/wallets", {
