@@ -151,6 +151,14 @@ export const RESPONSE_HEADERS: readonly ResponseHeaderDeclaration[] = [
       "Set on /metrics alongside the origin header, naming GET as the only method the route serves.",
     shape: /^GET$/,
   },
+  {
+    name: "set-cookie",
+    when: "route",
+    reason:
+      "Set only by POST /v1/web-session/telegram/nonce: the browser attempt binding. The cookie is HttpOnly and Secure, so only the pair that opened the attempt — this browser and CORE — can read it, and the login route answers only for the attempt it was opened for. One cookie, one shape, no others: a second cookie would be a second binding CORE has not declared.",
+    shape:
+      /^wasla_web_attempt=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Lax$/,
+  },
 ];
 
 const BY_NAME = new Map(RESPONSE_HEADERS.map((h) => [h.name, h] as const));

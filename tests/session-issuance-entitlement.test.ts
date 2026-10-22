@@ -632,6 +632,6 @@ describe("the contract publishes both refusals", () => {
       }
     }
     expect(unsecured.sort()).toEqual(declaredAnonymous);
-    expect(unsecured.length).toBe(4);
+    expect(unsecured.length).toBe(6);
   });
 });

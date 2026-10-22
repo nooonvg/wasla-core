@@ -155,7 +155,7 @@ describe("every write route accepts only the body it declares", () => {
   it("registers write routes, and reports what each accepts", () => {
     // The premise. An empty list would make every loop below pass silently.
     expect(registrations.length).toBeGreaterThanOrEqual(52);
-    expect(writes.length).toBe(30);
+    expect(writes.length).toBe(32);
     for (const route of writes) {
       expect(route.body, `${route.method} ${route.template}`).toBeDefined();
       expect(["none", "object", "opaque"]).toContain(route.body.kind);

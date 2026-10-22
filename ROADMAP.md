@@ -1,5 +1,98 @@
 # WASLA CORE — Roadmap
 
+**Last updated:** 2026-10-22
+**Last milestone:** The web sign-in adapter (XR-8.5, B-45) — the login surface
+that was measured missing and is now built, bound to the browser, measured and
+gated. What B-45 said when this cycle began, verbatim from the record: *"There
+is no sign-in adapter that verifies a channel's own proof before
+`session.issue`"* — and so the browser host in MARKET's customer app returned a
+null credential, the file saying web login is a converter in CORE that had not
+been built, while `POST /v1/sessions` stayed correctly closed by entitlement
+(B-39). What is built now is that converter, on the protocol Telegram
+currently publishes (measured against the live discovery document and the
+widget page's raw HTML before a line was written: OIDC Authorization Code Flow
+with PKCE, `id_token` JWTs signed RS256, keys in a published JWKS, and a
+published `nonce` parameter — "Server-generated random string to be included in
+the resulting id_token to prevent replay attacks"; the legacy HMAC widget this
+repository's older notes assumed is archived). Two routes, both anonymous by
+declaration like `POST /v1/identities`, because the person's evidence arrives
+in the body: `POST /v1/web-session/telegram/nonce` opens the attempt and sets
+the attempt cookie, and `POST /v1/web-session/telegram` consumes it. The
+binding is two-sided and both sides are enforced: the id_token must carry a
+nonce this environment issued (still unconsumed and unexpired), AND the
+request must carry the `wasla_web_attempt` cookie the nonce route set —
+HttpOnly, Secure, SameSite=Lax, declared in both the request-header and the
+response-header gates with shapes — so the login answers only for the browser
+that opened the attempt. A correctly signed token with a nonce we never
+issued, or under another browser's cookie, or with no cookie at all, is
+refused by name (`nonce_unknown` / `attempt_missing`). The verification is
+RS256-only (named-kid selection that also refuses a key publishing a different
+`alg` or `use`), `iss`/`aud`/`exp`/`iat` checked with `iat` required, every
+refusal named, and — a finding of the external review — **the base64url must
+be canonical**: `Buffer.from` accepts equivalent encodings of one signature
+(differing only in padding bits), so one signature under two encodings would
+have been two tokens; the parser now re-encodes and compares, and the test
+proves it with a same-group alphabet swap. A verified token links the person on
+the `telegram` channel with external id `tg-<sub>` and issues the session on
+the `web` channel, with the suspended identity refused and no session row
+written (asserted by counting). **The identity-space claim is scoped to what
+is proven:** the web sign-in resolves pre-existing CORE links in the `tg-<sub>`
+space (a test creates a link first and logs in against it — resolved, not
+duplicated). What is measured, and no more than it: MOVE's identity service —
+`services/identity/src/use-cases/resolve-telegram-identity.ts` — stores the
+bare numeric `telegram_user_id` in its own store, and nothing in MOVE or
+MARKET calls CORE's `/v1/identities`. Whether the mini-app's operational
+path ever registers in CORE, and in which external-id space, is an
+integration decision this cycle does not make — recorded here rather than
+papered over with a "whichever door" claim the code cannot back.
+**A design finding, acted on:** the original design had a separate one-time
+token ledger (`web_sign_in_tokens`) under the nonce; with the nonce mandatory
+and attempt-bound, that ledger is unreachable code — the token's nonce claim
+pins it to one attempt, which fires exactly once, so the token's single use is
+already decided where the nonce is — and in the token-first order it was
+worse than dead: a failed attempt binding burned the token. The ledger was
+removed, the reasoning recorded in the migration, and the tests now prove both
+replay families by name: the literal replay (`nonce_unknown` — the attempt is
+consumed) and the stolen token under a fresh attempt (also `nonce_unknown` —
+the token's nonce points at the owner's consumed attempt). No server-side
+secret exists on this path at all: public keys only. The unconfigured
+environment answers `503` by name, in the same spirit as the notification
+module's absent channel adapters: nothing invents a second source of sessions.
+The process entry wires PostgreSQL from `DATABASE_URL` (in-memory remains the
+no-database default of last resort), and web sign-in additionally requires it:
+a login surface whose replay guard resets on restart is not a login surface.
+Configuration from the environment only, with a TTL-cached JWKS fetcher whose
+stale-serve grace is a declared tolerance, not a claimed relation to the
+provider's token lifetime, which nobody publishes. Migration 0023 (renamed
+`0023_web_sign_in_nonces`) adds the nonce store — RLS-enabled like every CORE
+table — declared in `COLUMN_SHAPES`, ruled in `ROW_RULES`, written through
+`putRow` on the reference backend, attached to the reference registry, its
+read-absence excused by name in the read-path gate, and its up→down→up inverse
+proven by test against the live database. The independent verification vector
+is not generated by this repository's own `node:crypto` path: the frozen token
+and key in `tests/fixtures/web-sign-in-frozen-vector.json` were produced by an
+external implementation (Python `cryptography`), so a shared flaw between signer
+and verifier cannot pass unnoticed. **935** tests pass without `DATABASE_URL`
+and **1538** with it, the full flow driven on **both** backends — including the
+two-browser attempt theft (the same valid token refused under another
+browser's cookie and with no cookie, then completed by its owner), the
+concurrent twin (exactly one winner), the suspended identity and the direct
+no-session count. **Verification at this working tree:** `tsc --noEmit`
+clean; all 73 test files pass on both the memory backend and a real PostgreSQL
+18.4 with all 23 migrations applied, and the cluster pass (the migration
+lifecycle) runs green against it; the response gate drives both new operations
+to their real 201s — a nonce opened with its cookie set, a token verified,
+consumed once, a session the router's own authenticator accepts on
+`GET /v1/sessions/current` — and every declaration gate (authentication, body,
+retry, request headers, response headers, refusals, runtime tables, column
+parity, read-path parity) was updated by hand and re-run green, with the one
+deliberate model refinement recorded where it was made: an anonymous route may
+now document `401` when the refused proof *is* the authentication failure,
+which is what a login surface is. Governance, contract and migration gates
+passing, and the roadmap gate satisfied across the pushed range.
+
+### Milestone 28's entry, kept as written
+
 **Last updated:** 2026-09-13
 **Last milestone:** Every response declares the headers it sets, and every response
 carries the one a caller cannot work without (milestone 28) — the fifth and last

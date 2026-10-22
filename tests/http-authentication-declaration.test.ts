@@ -93,6 +93,8 @@ const ANONYMOUS = [
   "GET /ready",
   "GET /metrics",
   "POST /v1/identities",
+  "POST /v1/web-session/telegram",
+  "POST /v1/web-session/telegram/nonce",
 ];
 
 const JUNK_ID = "01JZZZZZZZZZZZZZZZZZZZZZZZ";
@@ -175,6 +177,9 @@ describe("every route declares whether it needs a credential", () => {
     // anonymous fails here, which is the whole point of writing the list out.
     expect(anonymous.sort()).toEqual([...ANONYMOUS].sort());
     expect(registrations.filter((route) => route.authentication.required).length).toBe(49);
+    // والقنوةُ الجديدةُ (XR-8.5) مجهولةٌ كقائمةِ الهوياتِ: دليلُ الشخصِ يصلُ في
+    // الجسمِ لا في الترويسةِ — لكنها دخولٌ لا إنشاءُ محتوى، فأُدرجت في القائمةِ
+    // بالاسمِ كما تقتضي قاعدةُ «بلا عددٍ». عدّادُ المصادَقِ عليهِ لا يتغيرُ: 49.
   });
 
   it("makes every anonymous route say why, in a sentence", () => {
@@ -438,12 +443,21 @@ describe("the contract publishes the refusal", () => {
       .map(label)
       .filter((one) => one.includes("/v1/"));
     const missing = required.filter((one) => !documented.has(one)).sort();
-    const spurious = [...documented].filter((one) => !required.includes(one)).sort();
+    // استثناءٌ مسمّى واحدٌ: مسارُ دخولِ الويبِ (XR-8.5) مجهولٌ — دليلُ الشخصِ
+    // يصلُ في الجسمِ لا في الترويسةِ — لكنَّ رفضَهُ هو نفسُهُ فشلُ المصادقةِ،
+    // فالـ401 عليهِ معناهُ الحرفيُّ (الدليلُ مرفوضٌ) لا «كانَ يجبُ أن يُقدَّمَ
+    // اعتمادٌ». بلا هذا الاستثناءِ يُجبَرُ العقدُ على إخفاءِ رفضٍ حقيقيٍّ
+    // يصلُ المتصلَ في الإنتاجِ — عكسَّ ما وُجدَ هذا البابُ لأجلِهِ.
+    const ANONYMOUS_401 = new Set(["POST /v1/web-session/telegram"]);
+    const spurious = [...documented]
+      .filter((one) => !required.includes(one) && !ANONYMOUS_401.has(one))
+      .sort();
     // Measured at 3 of 46 before this milestone. 48 since milestone 31 made the
-    // two session routes require a credential.
+    // two session routes require a credential. 50 since XR-8.5 added the web
+    // login surface, whose 401 is the refused proof, not a missing credential.
     expect(missing).toEqual([]);
     expect(spurious).toEqual([]);
-    expect(documented.size).toBe(49);
+    expect(documented.size).toBe(50);
   });
 
   it("explains the ordering where a client will read it", () => {

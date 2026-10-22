@@ -68,6 +68,15 @@ export type HeaderUse =
    */
   | "credential"
   /**
+   * The browser attempt cookie. Read only by the web sign-in login route to tie
+   * the login to the browser that opened the attempt; parsed for the
+   * `wasla_web_attempt` value, hashed, never stored and never echoed. A
+   * legitimate Cookie header is semicolon-separated pairs, so pairs are what
+   * is accepted — bounded, because an unbounded cookie is unbounded input to a
+   * credential path.
+   */
+  | "binding"
+  /**
    * A proxy chain. Legitimately a comma-separated list, so a list is accepted
    * and the first entry is the one CORE attributes to; bounded, because the
    * chain is caller-controlled text on the way to a hash.
@@ -164,6 +173,18 @@ export const DECLARED_HEADERS: readonly HeaderSpec[] = [
     use: "forwarded",
     maxLength: 128,
     why: "the reported client address, used by the rate limiter when neither of the above is present",
+  },
+  {
+    name: "cookie",
+    use: "binding",
+    // A browser sends its whole cookie basket for the origin, not our one
+    // cookie: the bound is a transport-safe size for that basket, not a shape
+    // for names — RFC 6265 names include `.` `~` `+`, and this gate runs on
+    // every route, so an allowlist here would refuse ordinary browsers. The
+    // login route alone decides what a Cookie header means: it extracts
+    // `wasla_web_attempt`, skips the rest, and refuses a duplicate.
+    maxLength: 4096,
+    why: "the web sign-in attempt binding: the HttpOnly cookie the nonce route set, read by POST /v1/web-session/telegram so only the browser that opened the attempt can finish it; parsed for wasla_web_attempt, hashed and never stored",
   },
   {
     name: "idempotency-key",

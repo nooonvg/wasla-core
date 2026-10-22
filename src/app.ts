@@ -54,10 +54,15 @@ import {
 } from "./modules/notification/service.js";
 import { IdentityChannelDirectory } from "./modules/notification/identity-directory.js";
 import { registerNotificationRoutes } from "./modules/notification/http.js";
+import { WebSignInService, type TelegramWebSignInOptions } from "./modules/web-session/service.js";
+export type { TelegramWebSignInOptions };
+import { registerWebSessionRoutes } from "./modules/web-session/http.js";
 import type { NotificationChannel } from "./modules/notification/ports.js";
 
 export interface CoreApp {
   router: Router<AuthenticatedPrincipal>;
+  /** Web sign-in (XR-8.5): null when the environment configured none. */
+  webSignIn: WebSignInService | null;
   bus: LocalEventBus;
   outbox: OutboxStore;
   boundary: TransactionBoundary;
@@ -161,6 +166,14 @@ export function createCoreApp(
      * that assert unthrottled behaviour; a deployment always wants the limit.
      */
     rateLimit?: boolean;
+    /**
+     * Web sign-in (XR-8.5 · B-45). Absent by default, and the route says so
+     * with a named refusal rather than a fake: no proof verifier is invented
+     * for an environment that did not configure one, for the same reason the
+     * notification module ships no channel adapter — a fake that accepted
+     * everything would mint sessions no person earned.
+     */
+    webSignIn?: TelegramWebSignInOptions;
   } = {},
 ): CoreApp {
   const clock = options.clock ?? systemClock;
@@ -179,6 +192,12 @@ export function createCoreApp(
   // Built before the relay because the notification fan-out resolves addresses
   // through identity's published service.
   const identity = new IdentityService(store.identity, outbox, boundary, audit, clock);
+  // Web sign-in (XR-8.5): the channel adapter that verifies a Telegram OIDC
+  // id_token with CORE's own check and issues the session itself. Null means
+  // the environment did not configure it; the route answers `503` by name.
+  const webSignIn = options.webSignIn
+    ? new WebSignInService(identity, store.webSignInNonces, options.webSignIn, clock)
+    : null;
   const fanOut = new DeliveryFanOut(store.delivery, clock, newId);
   // Addresses come from identity links through a port, never from a table this
   // module reads itself (ADR 0016, ADR 0017).
@@ -422,9 +441,11 @@ export function createCoreApp(
   registerSubscriptionRoutes(router, billing, identity);
   registerReputationRoutes(router, reputation, identity);
   registerNotificationRoutes(router, notificationRecipients, notifications, identity);
+  registerWebSessionRoutes(router, webSignIn);
 
   return {
     router,
+    webSignIn,
     metrics,
     depthSampler,
     bus,

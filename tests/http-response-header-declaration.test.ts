@@ -97,6 +97,10 @@ describe("declared response headers", () => {
       // two headers on the response, and no preflight, so no OPTIONS route.
       "access-control-allow-origin",
       "access-control-allow-methods",
+      // Cycle XR-8.5: the browser attempt binding. The nonce route sets one
+      // cookie — HttpOnly, Secure, SameSite=Lax — and the login route reads it
+      // back: the login answers only for the browser that opened the attempt.
+      "set-cookie",
     ]);
   });
 
@@ -116,7 +120,7 @@ describe("declared response headers", () => {
 
   it("answers every operation with a correlation id that matches the body's", async () => {
     const scenario = await runScenario();
-    expect(scenario.answers.size).toBe(53);
+    expect(scenario.answers.size).toBe(55);
     const shape = declaredResponseHeader("x-correlation-id")!.shape;
     const missing: string[] = [];
     for (const [label, answer] of scenario.answers) {

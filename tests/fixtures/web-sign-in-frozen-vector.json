@@ -1,0 +1,17 @@
+{
+  "description": "متجه مجمّد مستقل — وُلّد بمكتبة cryptography (بايثون) خارج هذا المستودع، مرة واحدة، ولا يُعاد توليده. iat/exp حول لحظة الاختبار المرجعية 2026-10-22، وnonce لأنه مطالبة إلزامية في البروتوكول.",
+  "jwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "kid": "frozen-1",
+        "alg": "RS256",
+        "use": "sig",
+        "n": "0XvjS3-u2kf2nnS4sdOvgVgpFvFrw6EjvDzFgThYINF5SAdhXgJAEDm2Jw6cc9jetLj8njjqochbLkxAZNcIdTn2qcBbpIlTiNEr0RTzQBip5iwstsGmUZzyQ4mtFslOB-xbrauzakgaV-SDg0R7GE52-vjGfxmy5dz8gf5OOkQzu1kv8nDlJbay1QS1xkc-NFm-dZlQgb3F0BhBeGFOnWYtmMrqzwxp3FGh6fhhqQwq9cd46C2_Czgkmq3rwJ1nzEMkTvtv9x_pQQCbAkObFmxwiWOH5gclUObZoNE1zZBqbt0hKVZAhbaOUNDEJ4RzNZ7YTYJtnoC9sWHSFfNipQ",
+        "e": "AQAB"
+      }
+    ]
+  },
+  "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImZyb3plbi0xIiwidHlwIjoiSldUIn0.eyJhdWQiOiJ3YXNsYS13ZWItdGVzdCIsImV4cCI6MTc5MjcwMDQwMCwiaWF0IjoxNzkyNjY2ODAwLCJpc3MiOiJodHRwczovL29hdXRoLnRlbGVncmFtLm9yZyIsIm5hbWUiOiJcdTA2NDVcdTA2MzNcdTA2MmFcdTA2MmVcdTA2MmZcdTA2NDUgXHUwNjQ1XHUwNjJjXHUwNjQ1XHUwNjJmIiwibm9uY2UiOiJmcm96ZW4tbm9uY2UtZm9yLXRoZS1pbmRlcGVuZGVudC12ZWN0b3IiLCJzdWIiOiI5ODc2NTQzMjEifQ.RdcJFdkE0Tem5--TN4z58_2ZyChWlL0i05zzmRdB1MSCPpRbfEruZkj3N8r_mqENSdcSOwPErlkAhH2niAzP0CZ0iN74pGzCIrWR9O2RrMk8BCc3wLlap1FOpY7tHXZOSYqpEbnHn6bnHn7KWC_IaLxRqfvRn5kBEj9RxlunKtTaHpZJKlpooKDRv40f4PyjvOlnlmqBhqa73rif5jK9jozxfqJ-fn-9Q-TyLR-FlsY1j-ORUTrnBhO9F0pINp7TahB7opg-hn9_ox9agHETKPbSDi_hLfKVNbITaX5F_todmZPy3Kk8u1QYb8pTOzA5vWgErOwPrkebeqzPuqrvOQ",
+  "expectedSubject": "987654321"
+}

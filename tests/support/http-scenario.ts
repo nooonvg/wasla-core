@@ -32,6 +32,7 @@ import { FixedClock } from "../../src/platform/clock.js";
 import { memoryPersistence, type Persistence } from "../../src/platform/persistence/backends.js";
 import { makeEvent } from "../../src/platform/eventing/envelope.js";
 import { seedCountry } from "./rows.js";
+import { fixedJwksSource, freshTelegramKey, signedTelegramIdToken } from "./web-sign-in-keys.js";
 
 /** Exactly what was sent, so it can be sent again unchanged. */
 export interface Request {
@@ -73,7 +74,23 @@ export function contractPath(template: string): string {
 export async function runScenario(): Promise<Scenario> {
   const clock = new FixedClock(START);
   const store = memoryPersistence(clock);
-  const core = createCoreApp({ clock, persistence: store, rateLimit: false });
+  // Web sign-in (XR-8.5) wired with a real verifier and test keys, not a fake:
+  // the response gate checks the SUCCESS this route really produces — a token
+  // verified, consumed once, and a session issued — which is what its 201
+  // schema is documented from. The refusal path is measured in
+  // `web-sign-in.test.ts`; here the gate sees the same answer a client with a
+  // valid Telegram id_token gets.
+  const webKey = freshTelegramKey("scenario-web-key");
+  const core = createCoreApp({
+    clock,
+    persistence: store,
+    rateLimit: false,
+    webSignIn: {
+      issuer: "https://oauth.telegram.org",
+      audience: "response-gate-web",
+      jwks: fixedJwksSource(webKey.jwks),
+    },
+  });
   const answers = new Map<string, Answer>();
 
   // ── a tenant, an administrator and a session, so the routes can be called ──
@@ -122,10 +139,12 @@ export async function runScenario(): Promise<Scenario> {
     url: string,
     body?: unknown,
     anonymous = false,
+    extraHeaders: Record<string, string> = {},
   ): Promise<Answer> => {
     const headers = {
       ...(anonymous ? {} : { authorization: `Bearer ${token}` }),
       ...retryKey(method),
+      ...extraHeaders,
     };
     const response = await core.router.handle({
       method,
@@ -175,6 +194,44 @@ export async function runScenario(): Promise<Scenario> {
   const issuedSession = bodyOf<{ session_id: string }>(issued);
 
   await call("GET", "/v1/sessions/current", "/v1/sessions/current");
+
+  // The web login surface (XR-8.5 · B-45). This scenario's app configures no
+  // web sign-in, so the answer measured here is the named refusal — `503`,
+  // not configured — checked against its documented schema like every other
+  // refusal. The success path, the replay refusal and the ledger are measured
+  // in `web-sign-in.test.ts`, which wires a real verifier with test keys.
+  // فتحُ المحاولةِ أولًا — ثمّ الرمزُ يحملُ ما فُتحَ: هذا هو الترتيبُ الحقيقيُّ
+  // الذي يمرُّ بهِ المتصفّحُ، والبوابةُ تقيسُ الجوابينِ كليهما.
+  const nonceAnswer = await call("POST", "/v1/web-session/telegram/nonce", "/v1/web-session/telegram/nonce", {}, true);
+  const loginNonce = bodyOf<{ nonce: string }>(nonceAnswer).nonce;
+  // كوكي المحاولةِ من رأسِ الجوابِ — كما يرفقُهُ المتصفّحُ تلقائيًّا: الربطُ
+  // الثاني الذي بدونهِ لا يكتملُ الدخولُ.
+  const setCookie = nonceAnswer.headers?.["set-cookie"];
+  if (typeof setCookie !== "string") throw new Error("no attempt cookie in scenario");
+  const attempt = /^wasla_web_attempt=([^;]+);/.exec(setCookie)?.[1];
+  if (attempt === undefined) throw new Error("unexpected attempt cookie shape");
+
+  await call(
+    "POST",
+    "/v1/web-session/telegram",
+    "/v1/web-session/telegram",
+    {
+      id_token: signedTelegramIdToken(
+        webKey,
+        {
+          iss: "https://oauth.telegram.org",
+          aud: "response-gate-web",
+          sub: "response-gate-web-subject",
+          exp: Math.floor(START.getTime() / 1000) + 3600,
+          iat: Math.floor(START.getTime() / 1000) - 60,
+          nonce: loginNonce,
+        },
+        { alg: "RS256", kid: "scenario-web-key", typ: "JWT" },
+      ),
+    },
+    true,
+    { cookie: `wasla_web_attempt=${attempt}` },
+  );
   // Somebody else's session, which needs `identity.write` — also the
   // administrator's. A caller ending its own session would leave every later
   // call in this scenario holding a revoked token.

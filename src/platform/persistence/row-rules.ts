@@ -457,6 +457,14 @@ export const ROW_RULES = {
    */
   session: [],
   /**
+   * دخولُ الويبِ (XR-8.5): جدولانِ بلا `CHECK` — قاعدتُهما الوحيدةُ المفتاحُ
+   * الأوليُّ وقرارُ «أولِ كاتبٍ» الذي يُتَّخَذُ في الإدخالِ/التحديثِ لا في قاعدةٍ
+   * على عمودٍ. وجودُهما هنا هو ما يُخضِعُهما لبوابةِ الأعمدةِ (`putRow` ترفضُ
+   * إلا بهما) — وهذه هي العودةُ الصادقةُ للتكافؤِ بدلَ الإعفاءِ: جدولٌ لهُ
+   * كاتبٌ يُحكَمُ، والإعفاءُ يُكسَرُ لا يُورَثُ.
+   */
+  web_sign_in_nonces: [],
+  /**
    * No `CHECK` constraints — the table is a claim ledger whose only rule is its
    * primary key. It is here so `putRow` will accept it at all, which is what
    * brings the column gate (and with it the `uuid` on `event_id`) to a table
