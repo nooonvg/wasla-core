@@ -7925,3 +7925,28 @@ delivery adds, in the wasla repository only: a PWA service worker (installable
 on desktop and mobile browsers) and wa.me WhatsApp sharing in the customer
 mini-app. No code changed in this repository; no milestone closed here; B-5/B-6
 and the other owner decisions in §5 remain open.
+
+## Cycle 2026-10-22 — ecosystem roadmap Revision 7 (owner instruction 5: technical coherence first)
+
+`docs/ecosystem/ECOSYSTEM_ROADMAP.md` Revision 7 (identical in the three
+repositories) records the owner's fifth instruction (2026-10-22: what matters is
+that everything works consistently, that the technical work is complete, and that
+the projects are interconnected — resuming production is not the priority). It
+adds decision D-XR-30 (amends XR-9.1: interconnection and technical completeness
+first; the MOVE production resume stays an owner item that blocks nothing) and
+facts F-38 (MARKET has no store→CORE-organization projection yet — required
+before the market.order.created producer can be activated) and F-39 (what the
+same delivery produced in the wasla repository: the seven CORE contracts copied
+into wasla docs/contracts/core/ with a byte-identity CI gate, and the
+marketOrderCreatedForCore egress converter built and tested). No code changed in
+this repository; no milestone closed here; B-5/B-6 and the other owner decisions
+in §5 remain open.
+
+## Follow-up 2026-10-22 — ecosystem roadmap Revision 7, trimmed to 398 lines
+
+The Revision 7 roadmap merged in PR #12 at 401 lines, which crossed ceezr's
+400-line new-document cap in the documentation budget gate (`check-docs-budget`).
+The same Revision 7 content, condensed to 398 lines (the two multi-bullet
+"not measured" notes in §7 merged without loss of meaning), is merged here so
+the three repositories stay byte-identical. No decisions changed; see PR #12 for
+the Revision 7 record.
