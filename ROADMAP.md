@@ -7895,3 +7895,17 @@ Postgres suite: 71 files, 1499 tests, cluster 1/1; default run 909.
 repositories) records B-46, B-47 and XR-8.9's CORE part in its §9 with the PRs
 and measurements above, adds owner decision OD-XR-10 (the self-service
 organization limit) and one unmeasured line in §7. No code changed.
+
+## Cycle 2026-10-22 — ecosystem roadmap Revision 5 (owner full delegation)
+
+`docs/ecosystem/ECOSYSTEM_ROADMAP.md` Revision 5 (identical in the three
+repositories) records the owner's third instruction (2026-10-22: full
+delegation to study the market, define the goal and restructure), adds the
+market study as `docs/ecosystem/MARKET_STUDY_2026-10-22.md` (also identical in
+the three repositories), facts F-29..F-36, the goal decision D-XR-18, delegated
+decisions D-XR-19..26 (web-first channels, Jeddah-first launch order, payment
+provider path, pricing hypothesis, accelerated-but-verified MARKET retirement,
+documentation cap, execution priorities, deferral of extra channels), and the
+XR-9 execution-order stage. No code changed. No item of this repository's
+milestones was closed by this revision; B-5/B-6 and the other owner decisions
+in §5 remain open except where D-XR-21/D-XR-22 started a resolution path.
