@@ -451,7 +451,19 @@ export const COLUMN_SHAPES: Readonly<Record<string, readonly ColumnShape[]>> = {
     { column: "currency", type: "char", length: 3, notNull: true },
     { column: "status", type: "text", notNull: true },
     { column: "created_at", type: "timestamptz", notNull: true },
-  ],};
+  ],
+
+  // ── دخولُ الويبِ (XR-8.5) ── جدولانِ بعمودِ قرارٍ واحدٍ لكلٍّ: الأولُ يقولُ
+  // «استُهلكَ هذا الرمزُ»، والثاني يقولُ «بدأتْ هذه المحاولةُ من متصفّحٍ
+  // سألَ عن nonce». محكومانِ كأيِّ جدولٍ لهُ كاتبٌ — لا إعفاءَ لجدولٍ يُكتبُ.
+  web_sign_in_nonces: [
+    { column: "nonce_hash", type: "text", notNull: true },
+    { column: "attempt_hash", type: "text", notNull: true },
+    { column: "created_at", type: "timestamptz", notNull: true, databaseDefault: "now()" },
+    { column: "expires_at", type: "timestamptz", notNull: true },
+    { column: "consumed_at", type: "timestamptz", notNull: false },
+  ],
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INT4_MIN = -2147483648;

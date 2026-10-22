@@ -81,6 +81,31 @@ const UNREAD: readonly Unread[] = [
   // path is fully gated as of milestone 19, which is what the behavioural half
   // would otherwise be checking.
   {
+    // دخولُ الويبِ (XR-8.5): كلا مخزنَّي الدخولِ لا يعيدانِ صفًّا أصلًا — سؤالُهما
+    // الوحيدُ «هل فازَ هذا الاستهلاكُ/التقبيلُ؟» (boolean من إدخالٍ مشروطٍ أو
+    // تحديثٍ مشروطٍ)، فلا قراءةً تُعيدُ أيَّ عمودٍ زمنيٍّ. الأعمدةُ تُكتبُ كلُّها
+    // عبرَ putRow فتخضعُ كتابتُها لبوابةِ الأعمدةِ كاملةً؛ ما لا يحدثُ هو
+    // إعادتُها — وليسَ لذلكَ مستهلكٌ يختلفُ بينَ الخلفيتينِ أصلًا.
+    table: "web_sign_in_nonces",
+    column: "created_at",
+    why: "the web sign-in stores return no record at all: both answer one boolean question (did this consume/issue win). Every column is written through putRow, so the write path is fully gated; only the read-back is absent, and no consumer of it exists",
+  },
+  {
+    table: "web_sign_in_nonces",
+    column: "attempt_hash",
+    why: "same as web_sign_in_nonces.created_at: the store answers a boolean (did this browser's attempt win), returns no record, and no consumer of the column exists",
+  },
+  {
+    table: "web_sign_in_nonces",
+    column: "expires_at",
+    why: "same as web_sign_in_nonces.created_at: the store answers a boolean, returns no record, and no consumer of the column exists",
+  },
+  {
+    table: "web_sign_in_nonces",
+    column: "consumed_at",
+    why: "same as web_sign_in_nonces.created_at: the store answers a boolean, returns no record, and no consumer of the column exists",
+  },
+  {
     table: "inbox",
     column: "consumer",
     why: "InboxStore returns no record: claim reports whether the insert won, seen is `select 1`. Half of the primary key, so it is bound on every read as a predicate rather than returned",
@@ -202,7 +227,7 @@ describe("read-path parity: the columns a read can surface", () => {
     // Vacuity guard. A parser that silently matched nothing would make every
     // gate below pass, so the shape of its own output is checked first.
     // 31 since milestone 32 added `idempotency_key`; 30 before it.
-    expect(shapedTables().length, "no shaped tables: the gates would be vacuous").toBe(31);
+    expect(shapedTables().length, "no shaped tables: the gates would be vacuous").toBe(32);
     expect(reads.size, "no table is read anywhere: the parser found nothing").toBeGreaterThan(25);
     const surfaced = [...reads.values()].reduce((total, set) => total + set.size, 0);
     expect(surfaced, "suspiciously few columns parsed").toBeGreaterThan(150);

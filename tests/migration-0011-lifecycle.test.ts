@@ -199,4 +199,54 @@ describe.skipIf(!url)("migration 0011 lifecycle", () => {
       (await query("select 1 from fulfillment where settlement_state = 'partially_captured'")).rows,
     ).toHaveLength(1);
   }, 120_000);
+  it("0023: the nonce store appears with the journal row, disappears with it, and returns — a true inverse", async () => {
+    // قد يكونُ هذا أولَ اختبارٍ في الملفِّ على قاعدةٍ فارغةٍ — up مرّةً يُطبّقُ
+    // كلَّ شيءٍ (ومن بعدُها عدمٌ)، فالترحيلُ مطبَّقٌ قبلَ أيِّ سؤالٍ.
+    await migrate("up");
+    // فالجدولُ وسطرُهُ موجودانِ.
+    const applied = await query<{ version: string }>(
+      "select version from schema_migrations where version = '0023_web_sign_in_nonces'",
+    );
+    expect(applied.rows).toHaveLength(1);
+    const table = await query<{ table_name: string }>(
+      "select table_name from information_schema.tables where table_name = 'web_sign_in_nonces'",
+    );
+    expect(table.rows).toHaveLength(1);
+    const column = await query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_name = 'web_sign_in_nonces' and column_name = 'attempt_hash'`,
+    );
+    expect(column.rows).toHaveLength(1);
+
+    // العكسُ: أحدثُ ترحيلٍ هو 0023، فتراجُعُ واحدٍ يرفعُهُ — الجدولُ وسطرُ
+    // الترحيلِ معًا، لا نصفُ عكسٍ يتركُ أحدهما.
+    const down = await migrate("down");
+    expect(down.stdout).toContain("0023_web_sign_in_nonces");
+    expect(
+      (await query<{ table_name: string }>(
+        "select table_name from information_schema.tables where table_name = 'web_sign_in_nonces'",
+      )).rows,
+    ).toHaveLength(0);
+    expect(
+      (await query<{ version: string }>(
+        "select version from schema_migrations where version = '0023_web_sign_in_nonces'",
+      )).rows,
+    ).toHaveLength(0);
+
+    // والعودةُ: up مرتينِ — أولاهما تأسيسٌ والثانيةُ عدمٌ (ON CONFLICT)،
+    // والجدولُ يعودُ كما كانَ.
+    await migrate("up");
+    expect(
+      (await query<{ table_name: string }>(
+        "select table_name from information_schema.tables where table_name = 'web_sign_in_nonces'",
+      )).rows,
+    ).toHaveLength(1);
+    await migrate("up");
+    expect(
+      (await query<{ version: string }>(
+        "select version from schema_migrations where version = '0023_web_sign_in_nonces'",
+      )).rows,
+    ).toHaveLength(1);
+  });
+
 });

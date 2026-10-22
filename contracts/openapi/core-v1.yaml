@@ -240,6 +240,150 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /v1/web-session/telegram/nonce:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      summary: Open a web login attempt
+      description: >
+        Issues the server-generated nonce that binds the next login attempt to
+        this browser (XR-8.5). Telegram's widget publishes the `nonce`
+        parameter for exactly this purpose: "Server-generated random string to
+        be included in the resulting id_token to prevent replay attacks". A
+        login that did not begin here cannot present a token this endpoint
+        issued, whatever its signature — the nonce is what makes the attempt
+        browser-initiated rather than token-dropped. One nonce is valid for
+        one login attempt and expires in ten minutes. A repeated request
+        opens a new attempt and replaces the cookie: the browser holds **one
+        active attempt** — the earlier nonce, if unused, simply expires on
+        its own. Multi-attempt support is not offered and not needed here.
+      security: []
+      responses:
+        "500": { $ref: "#/components/responses/Error" }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: >-
+            Web sign-in is not configured for this environment; `code` is
+            `unavailable`.
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "201":
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+            set-cookie:
+              description: >-
+                The browser attempt binding (`wasla_web_attempt`): HttpOnly,
+                Secure, SameSite=Lax, Path=/. The login route answers only for
+                the attempt this cookie opened — a token whose nonce this
+                browser did not ask for is refused whatever its signature.
+              schema: { type: string }
+          description: The nonce, and when it expires.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nonce: { type: string }
+                  expires_at: { type: string, format: date-time }
+  /v1/web-session/telegram:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      summary: Sign in on the web with a Telegram OIDC id_token
+      description: >
+        The web login surface (XR-8.5, B-45). `POST /v1/sessions` is not a login
+        endpoint and stays closed by entitlement (B-39); this one is where a
+        person proves themselves with their channel's own evidence: a Telegram
+        OIDC id_token, signed by Telegram's identity provider and verified here
+        against its published JWKS — public keys only, no bot secret held by
+        CORE. The verification is named: a refused token answers `401` with the
+        reason (malformed, unsupported algorithm, unknown key, signature
+        mismatch, wrong issuer or audience, expired, future iat, missing subject).
+
+
+        A verified token links the person on the `telegram` channel with the
+        same external id space as the mini-app path (`tg-<sub>`), so a person is
+        one identity whether they arrive from the mini-app or the browser. The
+        session is issued on the `web` channel. The id_token MUST carry a nonce
+        this environment issued (`POST /v1/web-session/telegram/nonce`), still
+        unconsumed and unexpired, **for the attempt the request's Cookie header
+        carries** (`wasla_web_attempt`, set by the nonce route): that is the
+        browser binding, and its absence or unknown-ness refuses with
+        `attempt_missing` / `nonce_missing` / `nonce_unknown`. The nonce's
+        single use is the token's single use — the token's nonce claim pins it
+        to one attempt, which fires exactly once — so a replayed token answers
+        `401` with `nonce_unknown` (the attempt is consumed) whatever its
+        signature: the refusal is never a re-answer of the first login's
+        response, and no session is minted twice. A new
+        token for the same person resolves to the same identity
+        (`identity_created: false`).
+
+
+        When the environment configured no web sign-in, the answer is `503` with
+        `not configured` — visible, never a silent fallback that would invent a
+        second source of sessions.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_token]
+              properties:
+                id_token:
+                  type: string
+                  description: >-
+                    A Telegram OIDC id_token (RS256 JWT) from oauth.telegram.org,
+                    carrying the nonce this environment issued for this attempt.
+      responses:
+        "500": { $ref: "#/components/responses/Error" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: >-
+            Web sign-in is not configured for this environment. CORE is up and
+            cannot serve this operation; `code` is `unavailable`, distinct from
+            an internal defect.
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "201":
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+          description: >-
+            Signed in. The token is returned once and stored only as a hash; the
+            id_token is stored only as its hash in the consumption ledger.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string, format: uuid }
+                  access_token: { type: string }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_at: { type: string, format: date-time }
+                  identity_id: { type: string, format: uuid }
+                  identity_created: { type: boolean }
   /v1/access/check:
     post:
       parameters:

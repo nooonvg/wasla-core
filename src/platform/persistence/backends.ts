@@ -22,8 +22,11 @@ import { PgGeographyRepository } from "../../modules/geography/pg-repository.js"
 import { InMemoryIdentityRepository } from "../../modules/identity-access/memory-repository.js";
 import type { IdentityRepository } from "../../modules/identity-access/ports.js";
 import { PgIdentityRepository } from "../../modules/identity-access/pg-repository.js";
+import { InMemoryWebSignInNonceStore } from "../../modules/web-session/memory-ledger.js";
+import type { WebSignInNonceStore } from "../../modules/web-session/service.js";
 import { InMemoryNotificationStore } from "../../modules/notification/repository.js";
 import type { NotificationStore } from "../../modules/notification/repository.js";
+import { PgWebSignInNonceStore } from "../../modules/web-session/pg-ledger.js";
 import { PgNotificationStore } from "../../modules/notification/pg-repository.js";
 import { InMemoryMoneyRepository } from "../../modules/money/repository.js";
 import type { MoneyRepository } from "../../modules/money/repository.js";
@@ -66,6 +69,9 @@ export interface Persistence {
   delivery: DeliveryStore;
   /** Notifications to people, as opposed to `delivery`, which is to systems. */
   notification: NotificationStore;
+  /** The web sign-in one-time token ledger (XR-8.5) — the replay guard for login proofs. */
+  /** The web sign-in nonce store (XR-8.5) — the browser binding for login attempts. */
+  webSignInNonces: WebSignInNonceStore;
   boundary: TransactionBoundary;
   /**
    * Mutual exclusion for replay runs. Part of the bundle because the correct
@@ -141,6 +147,7 @@ export function memoryPersistence(clock: Clock): Persistence {
     inbound: new InMemoryInboundEventStore(clock),
     delivery: new InMemoryDeliveryStore(clock, keys),
     notification: new InMemoryNotificationStore(keys),
+    webSignInNonces: new InMemoryWebSignInNonceStore(clock, keys),
     boundary: new InMemoryTransactionBoundary(),
     replayLock: new InProcessReplayLock(),
     revivalLock: new InProcessReplayLock(),
@@ -177,6 +184,7 @@ export function postgresPersistence(pool: PostgresPool, clock: Clock): Persisten
     inbound: new PgInboundEventStore(pool, clock),
     delivery: new PgDeliveryStore(pool, clock),
     notification: new PgNotificationStore(pool),
+    webSignInNonces: new PgWebSignInNonceStore(pool, clock),
     boundary: new PgTransactionBoundary(pool as never),
     replayLock: new PgAdvisoryReplayLock(pool),
     revivalLock: new PgAdvisoryReplayLock(pool, REVIVAL_LOCK_KEY),
