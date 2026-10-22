@@ -7909,3 +7909,19 @@ documentation cap, execution priorities, deferral of extra channels), and the
 XR-9 execution-order stage. No code changed. No item of this repository's
 milestones was closed by this revision; B-5/B-6 and the other owner decisions
 in §5 remain open except where D-XR-21/D-XR-22 started a resolution path.
+
+## Cycle 2026-10-22 — ecosystem roadmap Revision 6 (owner instruction 4: all channels)
+
+`docs/ecosystem/ECOSYSTEM_ROADMAP.md` Revision 6 (identical in the three
+repositories) records the owner's fourth instruction (2026-10-22: وصلة on all
+channels — Telegram, Discord, WhatsApp, Android, iOS, desktop, web — not
+Telegram alone). It adds fact F-37 (WhatsApp Business Platform requirements,
+sourced), decisions D-XR-27 (WhatsApp as a first-class channel: wa.me sharing
+now, bot behind OD-XR-11), D-XR-28 (desktop = responsive web/PWA from the same
+codebase), D-XR-29 (channel building starts now per the owner's order; each
+channel stays behind its owner account decision), item XR-8.12 and the WhatsApp
+row in §4-أ, and owner decision OD-XR-11 (WhatsApp Business account). The same
+delivery adds, in the wasla repository only: a PWA service worker (installable
+on desktop and mobile browsers) and wa.me WhatsApp sharing in the customer
+mini-app. No code changed in this repository; no milestone closed here; B-5/B-6
+and the other owner decisions in §5 remain open.
