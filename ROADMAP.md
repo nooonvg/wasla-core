@@ -7941,3 +7941,12 @@ into wasla docs/contracts/core/ with a byte-identity CI gate, and the
 marketOrderCreatedForCore egress converter built and tested). No code changed in
 this repository; no milestone closed here; B-5/B-6 and the other owner decisions
 in §5 remain open.
+
+## Follow-up 2026-10-22 — ecosystem roadmap Revision 7, trimmed to 398 lines
+
+The Revision 7 roadmap merged in PR #12 at 401 lines, which crossed ceezr's
+400-line new-document cap in the documentation budget gate (`check-docs-budget`).
+The same Revision 7 content, condensed to 398 lines (the two multi-bullet
+"not measured" notes in §7 merged without loss of meaning), is merged here so
+the three repositories stay byte-identical. No decisions changed; see PR #12 for
+the Revision 7 record.
