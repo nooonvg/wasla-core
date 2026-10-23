@@ -208,6 +208,38 @@ for (const backend of await backends()) {
       expect(principal.identity_id).toBe((first.body as { identity_id: string }).identity_id);
     });
 
+    it("روابطُ قنواتِ الهويةِ في الجوابِ — نصفُ الطرفِ الموثوقِ في XR-6.1", async () => {
+      // ما يقرأُهُ حدُّ السوقِ حينَ يُبدّلُ جلسةَ الويبِ بجلسةِ السوقِ: رابطُ
+      // القناةِ (`tg-<sub>`) هو المفتاحُ الذي يُسوّي بهِ السوقُ مستخدمَهُ —
+      // فوجودُهُ في `GET /v1/sessions/current` هو عقدُ التبادلِ بينَ النواةِ
+      // والحدّ. بياناتُ المتصلِ نفسِهِ على مصادِقِ المتصلِ نفسِهِ: لا يُنشرُ
+      // هنا ما لم يقرأهُ المصادِقُ أصلًا ليُجيبَ.
+      const app = await backend.make();
+      const { nonce, attempt } = await openAttempt(app);
+      const first = await login(
+        app,
+        signedTelegramIdToken(app.key, claimsFor("445566780", nonce)),
+        attempt,
+      );
+      expect(first.status).toBe(201);
+      const session = first.body as { access_token: string };
+      const current = await app.core.router.handle({
+        method: "GET",
+        url: "/v1/sessions/current",
+        headers: { authorization: `Bearer ${session.access_token}` },
+      });
+      expect(current.status).toBe(200);
+      const body = current.body as {
+        channel_links?: Array<{ channel_type: string; external_id: string; verified_at: string | null }>;
+      };
+      expect(body.channel_links).toBeDefined();
+      const telegram = body.channel_links!.find((link) => link.channel_type === "telegram");
+      expect(telegram).toBeDefined();
+      expect(telegram!.external_id).toBe("tg-445566780");
+      // والرمزُ نفسُهُ لا يظهرُ في الجوابِ — روابطُ القنواتِ ليستْ ثغرةَ إفشاءٍ جديدة.
+      expect(JSON.stringify(body)).not.toContain(session.access_token);
+    });
+
     it("الرمزُ نفسُهُ لا يفتحُ جلسةً ثانيةً — ولا جلسةَ تُنشأُ", async () => {
       const app = await backend.make();
       const { nonce, attempt } = await openAttempt(app);
