@@ -3040,6 +3040,22 @@ components:
             The system this credential speaks for, or null for a human principal.
             It is what `POST /v1/events` compares a submitted event's producer
             against, so a caller can see which system CORE believes it is.
+        channel_links:
+          type: array
+          description: >-
+            The channel links held for the authenticated identity (XR-6.1's
+            relying-party half): a downstream verifier of this session reads
+            here the channel subject that keys its idempotent resolve. The
+            caller's own data, on the caller's own credential.
+          items:
+            type: object
+            required: [identity_link_id, channel_type, external_id, verified_at, created_at]
+            properties:
+              identity_link_id: { type: string, format: uuid }
+              channel_type: { $ref: "#/components/schemas/ChannelType" }
+              external_id: { type: string }
+              verified_at: { type: string, format: date-time, nullable: true }
+              created_at: { type: string, format: date-time }
     Organization:
       type: object
       required: [organization_id, name, status, country_code]

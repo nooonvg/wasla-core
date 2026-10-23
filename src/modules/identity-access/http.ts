@@ -145,7 +145,27 @@ export function registerIdentityRoutes(
 
   // Verify the caller's own session. Returns principal, org membership and permissions.
   router.get("/v1/sessions/current", [], AUTHENTICATED, async (ctx) => {
-    return { status: 200, body: currentPrincipal(ctx) };
+    const principal = currentPrincipal(ctx);
+    // The caller's own channel links (XR-6.1's relying-party half): a service
+    // that verifies this session downstream — MARKET's channel edge bridging a
+    // web session to its own user — reads here the channel subject (e.g.
+    // `tg-12345`) that keys its idempotent resolve. The links are the
+    // caller's own data, served to the caller's own credential: nothing is
+    // published here that authenticate() did not already read to answer.
+    const links = await identity.channelLinks(principal.identity_id);
+    return {
+      status: 200,
+      body: {
+        ...principal,
+        channel_links: links.map((link) => ({
+          identity_link_id: link.identity_link_id,
+          channel_type: link.channel_type,
+          external_id: link.external_id,
+          verified_at: link.verified_at,
+          created_at: link.created_at,
+        })),
+      },
+    };
   });
 
   router.post(
