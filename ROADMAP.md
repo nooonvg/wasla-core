@@ -1,6 +1,12 @@
 # WASLA CORE — Roadmap
 
 **Last updated:** 2026-10-22
+
+> **Declared limit (Ecosystem Revision 13 · 2026-10-24 · F-43):** the built
+> contracts and pipelines do not mean operational integration completeness —
+> the MARKET ← CORE ← MOVE journey is not yet proven (XR-4.3 open), and the
+> live inter-repo transfer state is **unverified**. Activation waits on the
+> CORE environment (B-5) and the verified binding (XR-6.1).
 **Last milestone:** The web sign-in adapter (XR-8.5, B-45) — the login surface
 that was measured missing and is now built, bound to the browser, measured and
 gated. What B-45 said when this cycle began, verbatim from the record: *"There
