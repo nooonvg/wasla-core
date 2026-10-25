@@ -592,9 +592,9 @@ Nothing.
 **942 passed / 148 skipped across 75 files** without `DATABASE_URL` (the
 dependency-free suite, counted by running it at this commit), plus the
 cluster pass (the migration lifecycle). The with-database count is carried by
-CI's `DATABASE_URL` job: **1547** on a real PostgreSQL with all 24 migrations
-applied (1546 before the 0024 lifecycle test this cycle added to the cluster
-pass). That job's first run at this cycle caught the one stale figure the
+CI's `DATABASE_URL` job: **1546** on a real PostgreSQL with all 24 migrations
+applied, plus the cluster pass — three lifecycle tests now, the 0024 inverse
+among them. That job's first run at this cycle caught the one stale figure the
 cycle itself left behind — the column-parity count still said 281 where
 migration 0024's two `deleted_at` columns make it 283 — and the fix is in this
 same range. The figure this line carried before — 1015 of 1015 across 42 files
