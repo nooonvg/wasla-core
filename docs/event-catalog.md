@@ -8,6 +8,7 @@ Delivery is at-least-once. Consumers must be idempotent on `event_id` via their 
 | Event type | Version | Status | Entity | Consumers | Schema |
 |---|---|---|---|---|---|
 | `core.identity.verified` | 1 | implemented | identity | MOVE, MARKET | `contracts/events/core.identity.verified.v1.schema.json` |
+| `core.identity.account.deleted` | 1 | implemented | identity | MOVE, MARKET | `contracts/events/core.identity.account.deleted.v1.schema.json` |
 | `core.money.credited` | 1 | implemented | wallet | authorized consumers | `contracts/events/core.money.credited.v1.schema.json` |
 | `core.payment.authorized` | 1 | implemented | payment authorization | MARKET | `contracts/events/core.payment.authorized.v1.schema.json` |
 | `core.payment.captured` | 1 | implemented | payment authorization | MARKET | `contracts/events/core.payment.captured.v1.schema.json` |

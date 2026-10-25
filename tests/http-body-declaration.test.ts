@@ -155,7 +155,7 @@ describe("every write route accepts only the body it declares", () => {
   it("registers write routes, and reports what each accepts", () => {
     // The premise. An empty list would make every loop below pass silently.
     expect(registrations.length).toBeGreaterThanOrEqual(52);
-    expect(writes.length).toBe(32);
+    expect(writes.length).toBe(33);
     for (const route of writes) {
       expect(route.body, `${route.method} ${route.template}`).toBeDefined();
       expect(["none", "object", "opaque"]).toContain(route.body.kind);
@@ -234,6 +234,13 @@ describe("every write route accepts only the body it declares", () => {
       for (const empty of [undefined, {}]) {
         const accepted = await send(route, empty);
         expect(accepted.status, `${where} refused an empty body`).not.toBe(400);
+        // The deletion route's empty probes are the request itself, and it is
+        // granted: the account ends, and with it the session the credential
+        // this file probes with was issued from. A 204 from a bodyless route is
+        // that grant — nothing else here answers 204 — so the credential is
+        // minted afresh right away, or every later refusal would measure a
+        // dead token instead of a parse.
+        if (accepted.status === 204) token = await anonymousCredential(core);
       }
     }
   });

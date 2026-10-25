@@ -582,6 +582,59 @@ paths:
               schema: { $ref: "#/components/schemas/Organization" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/KeyReused" }
+  /v1/me/deletion:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      summary: Delete your own account (D-XR-13)
+      description: >
+        The person ends their own account, and the entitlement is the one
+        logout already answers for: your own account is yours to end, so no
+        permission is asked for. A service credential is refused `403` — it
+        speaks for a channel, not for the person.
+
+
+        A deletion is a tombstone, not a row removal: in one transaction the
+        identity is `deleted`, its display name is scrubbed, its links and
+        memberships are tombstoned, and every live session is revoked — the
+        caller's own token included, so the response leaves the caller logged
+        out. The rows stay, because the audit trail is append-only; reads stop
+        seeing them, so the account holds no role anywhere and the channel
+        slot frees for the person who comes back and registers afresh.
+
+
+        One refusal, and it is a conflict rather than a silent side effect:
+        while the caller administers an organization — `org_admin` or
+        `platform_admin` — deleting the account would leave that organization
+        (or the platform) without an administrator. Transfer or close those
+        first; the refusal is `409` and `details.organization_ids` names them.
+        A plain member's memberships are tombstoned with the account.
+
+
+        Retry safety is natural rather than keyed: a repeat of a committed
+        deletion arrives with a token the deletion itself revoked, and is
+        answered `401` — the same answer the first call's effect owes. There
+        is nothing a repeat could create, and no id to replay.
+
+
+        The event is the contract the products need: MOVE and MARKET hold
+        their own copies of a person's data, and `core.identity.account.deleted`
+        is the only way they learn the person is gone — carrying the ids to
+        purge and no personal data of its own.
+      responses:
+        "500": { $ref: "#/components/responses/Error" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "204":
+          description: Deleted
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/DeletionConflict" }
   /v1/organizations/{organization_id}:
     get:
       summary: Read an organization the caller belongs to
@@ -2734,6 +2787,34 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    DeletionConflict:
+      description: >
+        The caller administers an organization, and an administrator's account
+        is not theirs to delete alone: tombstoning the membership would leave
+        that organization without an administrator, which is a transfer to
+        arrange and not a side effect of deleting. `code` is `conflict`,
+        `retryable` is false, and `details.organization_ids` names every
+        organization the caller administers — transfer or close those first,
+        then repeat this call. A plain member's memberships are tombstoned
+        with the account, so this refusal is the administrator's alone.
+      headers:
+        x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+        x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+        x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+        x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Error"
+              - type: object
+                properties:
+                  details:
+                    type: object
+                    properties:
+                      organization_ids:
+                        type: array
+                        items: { type: string, format: uuid }
     Unauthenticated:
       description: >
         No credential, or one CORE does not accept. `code` is `unauthenticated`
@@ -3122,6 +3203,11 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Role" }
         created_at: { type: string, format: date-time }
+        # D-XR-13: a membership can now be a tombstone — null while it is
+        # live, the instant it ended with the account that held it. Reads stop
+        # seeing tombstoned rows, so this is the field's only audience: the row
+        # as it was written, for the audit trail.
+        deleted_at: { type: string, format: date-time, nullable: true }
     Wallet:
       type: object
       required: [wallet_id, owner_type, owner_id, currency, status, created_at]

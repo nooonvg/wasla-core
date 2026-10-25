@@ -214,6 +214,7 @@ describe("column parity: refusals the database also raises", () => {
         organization_id: randomUUID(),
         roles: "admin",
         created_at: "2026-09-13T00:00:00.000Z",
+        deleted_at: null,
       }),
     ).toBe(`malformed array literal: "admin"`);
   });

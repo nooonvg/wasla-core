@@ -646,6 +646,32 @@ export async function runScenario(): Promise<Scenario> {
   );
   await call("GET", "/v1/notifications", "/v1/notifications");
 
+  // ── deletion (D-XR-13) ──
+  // A fresh person with no admin role — the scenario's own admin holds
+  // platform_admin and would be refused 409, which is a real answer but not
+  // this scenario's: here the deletion has to be granted, so the person is
+  // registered apart, deleted through their own token, and the scenario's
+  // admin lives on to drive everything after. The 204 is the whole answer:
+  // the caller is nobody now, and the response carries no body to document.
+  const deleter = await core.identity.registerIdentity({
+    channel_type: "web",
+    external_id: "response-gate-deleter",
+    correlation_id: CORR,
+  });
+  const deleterSession = await core.identity.issueSession({
+    principal_id: deleter.principal.principal_id,
+    channel_type: "web",
+    correlation_id: CORR,
+  });
+  await call(
+    "POST",
+    "/v1/me/deletion",
+    "/v1/me/deletion",
+    undefined,
+    false,
+    { authorization: `Bearer ${deleterSession.token}` },
+  );
+
   // Recorded for its own label; nothing later needs the second organization.
   void created;
 

@@ -10,7 +10,15 @@
  *  - Membership    : principal ↔ organization, carrying roles.
  */
 
-export type IdentityStatus = "active" | "suspended" | "merged";
+/**
+ * `deleted` is the terminal state an account deletion writes (D-XR-13): the
+ * row stays — the audit trail is append-only and the append-only triggers
+ * guard what they guard — but it answers no authentication, issues no session,
+ * and its channel links are tombstoned so the person may register afresh. It is
+ * a tombstone, not a row removal: `tests/delete-parity.test.ts` keeps row
+ * removal to the four declared paths, and none of them is this.
+ */
+export type IdentityStatus = "active" | "suspended" | "merged" | "deleted";
 
 export interface Identity {
   identity_id: string;
@@ -58,6 +66,13 @@ export interface IdentityLink {
   external_id: string;
   verified_at: string | null;
   created_at: string;
+  /**
+   * Set by account deletion (D-XR-13). A tombstoned link keeps its row for the
+   * record and stops holding its `(channel_type, external_id)` slot, so the
+   * person can register a fresh account on the same channel account. Reads
+   * that resolve or list links exclude it.
+   */
+  deleted_at: string | null;
 }
 
 export interface Principal {
@@ -98,6 +113,8 @@ export interface Membership {
   organization_id: string;
   roles: Role[];
   created_at: string;
+  /** Set by account deletion (D-XR-13); excluded from every authorization read. */
+  deleted_at: string | null;
 }
 
 export type Permission =

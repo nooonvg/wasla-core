@@ -551,6 +551,16 @@ export function violations(value: unknown, schema: Yaml, at = "body"): string[] 
       }
       const properties = (spec["properties"] ?? {}) as Record<string, Yaml>;
       const required = (spec["required"] ?? []) as Yaml[];
+      // JSON Schema semantics, restored here for one reason: `details` is
+      // documented as a bare `{ type: object }` — a free-form object — and a
+      // free-form object that rejected every key would not be free-form. The
+      // members a refusal carries there are documented where they belong, in
+      // the prose of the response that returns them (`details.claimed_at` on
+      // KeyReused, `details.organization_ids` on DeletionConflict), so the gate
+      // stays closed for every structured object — the ones that declare
+      // `properties` — and open only where the contract itself says "any".
+      const freeForm =
+        Object.keys(properties).length === 0 && spec["additionalProperties"] === undefined;
       for (const key of required) {
         if (typeof key === "string" && !(key in (value as object))) {
           problems.push(`${at}: required property "${key}" is missing`);
@@ -559,7 +569,9 @@ export function violations(value: unknown, schema: Yaml, at = "body"): string[] 
       for (const [key, member] of Object.entries(value as Record<string, unknown>)) {
         const property = properties[key] ?? additional(spec);
         if (property === undefined) {
-          problems.push(`${at}: property "${key}" is returned but the contract does not document it`);
+          if (!freeForm) {
+            problems.push(`${at}: property "${key}" is returned but the contract does not document it`);
+          }
           continue;
         }
         problems.push(...violations(member, property, `${at}.${key}`));

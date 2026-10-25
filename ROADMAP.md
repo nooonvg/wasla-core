@@ -1,12 +1,75 @@
 # WASLA CORE — Roadmap
 
-**Last updated:** 2026-10-22
+**Last updated:** 2026-10-25
 
 > **حدٌّ مصرَّحٌ به (المراجعة 14 · 2026-10-24 · F-43):** العقودُ والأنابيبُ
 > المبنيةُ لا تعني اكتمالَ التكاملِ التشغيليِّ — رحلةُ MARKET ← CORE ← MOVE لم
 > تُثبَت بعد (XR-4.3 مفتوح)، وحالةُ النقلِ الحيِّ بينَ المستودعاتِ **غيرُ
 > متحقَّقةٍ**؛ والقياساتُ المحليّةُ لا تُثبِتُ اكتمالَ الرحلةِ، والنشرُ خلفُ
 > قرارِ المالكِ (B-5/B-6)، والربطُ المتحقَّقُ منهُ بندٌ لاحقٌ (XR-6.1).
+**Last milestone:** Account deletion (D-XR-13) — the exit every platform owes
+the person and none of the three repositories offered. Measured before a line
+of this was written, twice over: no route, no service method, no event, no way
+for MOVE or MARKET to learn a person is gone — and the acceptance XR-8.3
+names for the browser journey it gates ends in «حذف حساب», which Apple's
+5.1.1(v) makes a condition of shipping at all. The decision this closes on is a
+**tombstone, not a row removal** — CORE's row removal is four declared paths
+(`tests/delete-parity.test.ts`), none of which is this, and the audit trail is
+append-only. `POST /v1/me/deletion`, `NO_BODY`, natural retry: the retry of a
+committed deletion cannot even arrive authenticated, because the deletion
+revokes the caller's sessions inside the same transaction — its `401` is the
+effect of the first call, answered, and the route is deliberately not keyed:
+there is no id to replay and nothing a repeat could create. The entitlement is
+the one logout already answers for: your own account, no permission asked. A
+service credential is refused `403` — it speaks for a channel, not the person.
+One refusal, and it is a conflict rather than a silent side effect: while the
+caller administers an organization (`org_admin` or `platform_admin`) the
+deletion is refused `409` with `details.organization_ids` naming them, because
+tombstoning that membership would strand the organization without an
+administrator — an exit is not a transfer. A plain member's memberships are
+tombstoned with the account. In one transaction: `identity.status` is
+`deleted`, `display_name` is scrubbed, links and memberships carry
+`deleted_at`, every live session is revoked. The rows stay; the reads stop
+seeing them; and migration 0024's partial unique indexes free the slots the
+tombstones leave behind — the same channel account registers afresh as a new
+identity (`created: true`, no merge), and the same principal may hold a live
+membership in the same organization again. The event is the contract the
+products need: `core.identity.account.deleted` v1, published with schema,
+example and catalog entry, carrying `{identity_id, principal_id, deleted_at}`
+and no personal data — the display name is already scrubbed and the event
+deliberately carries none. MOVE and MARKET purge their own copies on it, which
+is the only way they learn. The contract work it forced: the route documented
+with every refusal it can produce (`409` now a matrix answer, reached on its
+own by the uniform probe set — the admin caller is refused, deliberately), a
+dedicated `DeletionConflict` response component documenting
+`details.organization_ids` where it belongs, `Membership` documenting
+`deleted_at` for the row as it was written, and one deliberate refinement of
+the checker recorded where it was made: a bare `{ type: object }` is
+free-form, as JSON Schema says and as `details` has been documented all
+along — the members a refusal carries there are documented in the prose of the
+response that returns them (`details.claimed_at` on KeyReused before this
+cycle, `details.organization_ids` on DeletionConflict now). Every declaration
+gate was updated by hand and re-run green: authentication (50 authenticated
+routes, 51 documented `401`s), body (33 write routes, and the deletion route's
+empty probes are the request itself — a bodyless route answering `204` ends the
+credential the probe was issued from, so that file mints afresh on that
+answer), response headers (56 answers driven), documented refusals and
+conflicts (a driver for the admin refusal), uniqueness parity (the two renamed
+rules, now partial indexes), runtime tables (24 migrations), event payload
+declaration (the event driven through a person registered apart, because the
+setup principal holds `platform_admin` and would be refused), and the response
+gate's scenario drives the route to its real `204` through that same person.
+A five-test behaviour file reads the choice back: deleted, nameless,
+unauthenticated, tombstoned, slots freed, event and audit row exactly once
+with the idempotent repeat emitting nothing, administrators refused by name,
+service credentials refused. **942** tests pass without `DATABASE_URL`
+(148 skipped, the cluster pass), and the suite's count moved 936 → 942.
+**Verification at this working tree:** `tsc --noEmit` clean; `npm run verify`
+green — typecheck, the full suite, governance, contracts (27 event schemas, 18
+emitted types covered) and the test partition (75 files, 74 suite / 1 cluster).
+
+### XR-8.5's entry, kept as written
+
 **Last milestone:** The web sign-in adapter (XR-8.5, B-45) — the login surface
 that was measured missing and is now built, bound to the browser, measured and
 gated. What B-45 said when this cycle began, verbatim from the record: *"There
@@ -96,6 +159,7 @@ deliberate model refinement recorded where it was made: an anonymous route may
 now document `401` when the refused proof *is* the authentication failure,
 which is what a login surface is. Governance, contract and migration gates
 passing, and the roadmap gate satisfied across the pushed range.
+
 
 ### Milestone 28's entry, kept as written
 
@@ -524,6 +588,16 @@ Nothing.
 | Roadmap drifting behind the code | medium | Roadmap gate fails the build |
 
 ## Tests that pass at this commit
+
+**942 passed / 148 skipped across 75 files** without `DATABASE_URL` (the
+dependency-free suite, counted by running it at this commit), plus the
+cluster pass (the migration lifecycle). The with-database count is not
+re-measured in this cycle's working tree — no local PostgreSQL stood behind
+it — and is carried by CI's `DATABASE_URL` job, which runs the same suite on a
+real database with all 24 migrations applied. The figure this line carried
+before — 1015 of 1015 across 42 files with `DATABASE_URL` set, 550 / 54
+without — is superseded and kept below for the same reason the ones before it
+were: the count's history stays auditable.
 
 **1015 of 1015 across 42 files** with `DATABASE_URL` set (both backends), plus
 the migration-lifecycle pass (1), and **550 passed / 54 skipped** without.

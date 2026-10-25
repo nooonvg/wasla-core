@@ -175,6 +175,23 @@ describe("event payload declaration", () => {
     // core.money.credited already emitted by the credit() in makeCore
     // core.identity.verified already emitted by registerIdentity
 
+    // core.identity.account.deleted: a person registered apart, because the
+    // setup principal holds platform_admin and an administrator's account is
+    // refused — the refusal is the right answer to that caller, and this gate
+    // needs the granted one. The deletion emits the event and nothing else.
+    const deleted = await core.identity.registerIdentity({
+      channel_type: "web",
+      external_id: "event-payload-deleted",
+      correlation_id: CORR,
+    });
+    const deletedSession = await core.identity.issueSession({
+      principal_id: deleted.principal.principal_id,
+      channel_type: "web",
+      correlation_id: CORR,
+    });
+    const deletedActor = await core.identity.authenticate(deletedSession.token);
+    await core.identity.deleteAccount(deletedActor, { correlation_id: CORR });
+
     const auth = await core.money.authorize({
       wallet_id: walletId,
       amount_minor: 5_000,

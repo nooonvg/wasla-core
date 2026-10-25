@@ -198,8 +198,9 @@ describe("runtime tables: the two exemptions, tried rather than trusted", () => 
     // of an answer needs; 19 before it. 21 since milestone 33's 0021 gave the
     // same table the columns a *claim* needs, so the row can be written before
     // the work rather than after it. 23 since XR-8.5's 0023 created the
-    // one-time web sign-in token ledger.
-    expect(forward.length, "no migrations found: the gate would pass vacuously").toBe(23);
+    // one-time web sign-in token ledger. 24 since D-XR-13's 0024 tombstoned
+    // deletion and freed the channel slot the tombstone leaves behind.
+    expect(forward.length, "no migrations found: the gate would pass vacuously").toBe(24);
     const silent = forward.filter((file) => {
       const sql = readFileSync(join(dir, file), "utf8");
       const version = file.replace(/\.sql$/, "");

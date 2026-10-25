@@ -187,6 +187,12 @@ async function reuseKey(context: Context, label: string): Promise<Answer> {
 
 const DRIVERS: readonly Driver[] = [
   {
+    label: "POST /v1/me/deletion",
+    mechanism: "domain",
+    message: "transfer or close the organizations you administer before deleting your account",
+    run: (context) => context.send("POST", "/v1/me/deletion"),
+  },
+  {
     label: "POST /v1/memberships",
     mechanism: "domain",
     message: "membership already exists",

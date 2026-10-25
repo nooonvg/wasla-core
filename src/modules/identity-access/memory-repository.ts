@@ -33,8 +33,18 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     keys?.attach("membership", this.memberships);
   }
 
-  private linkKey(channelType: ChannelType, externalId: string) {
-    return `${channelType}::${externalId}`;
+  /**
+   * Rows keyed by their own id, exactly as Postgres keys them: a tombstoned
+   * link and the fresh link that replaced it are two rows that coexist, and a
+   * slot-keyed map would overwrite the first with the second.
+   */
+  private liveLink(channelType: ChannelType, externalId: string) {
+    return [...this.links.values()].find(
+      (l) =>
+        l.channel_type === channelType &&
+        l.external_id === externalId &&
+        l.deleted_at === null,
+    );
   }
 
   /**
@@ -48,6 +58,44 @@ export class InMemoryIdentityRepository implements IdentityRepository {
    */
   private duplicate(constraint: string): Error {
     return new Error(`duplicate key value violates unique constraint "${constraint}"`);
+  }
+
+  async insertLink(link: IdentityLink, _scope?: TransactionScope): Promise<void> {
+    // Only a live link holds the slot. A tombstoned one (account deletion,
+    // D-XR-13) keeps its row for the record and frees the channel account to
+    // register afresh, which is what the partial unique index
+    // `identity_link_channel_external_active_key` says in Postgres.
+    if (this.liveLink(link.channel_type, link.external_id) !== undefined) {
+      throw this.duplicate("identity_link_channel_external_active_key");
+    }
+    journalMapWrite(_scope, this.links, link.identity_link_id);
+    putRow("identity_link", this.links, link.identity_link_id, link);
+  }
+  async findLink(channelType: ChannelType, externalId: string): Promise<IdentityLink | undefined> {
+    // A tombstoned link does not resolve: `registerIdentity` reads this to
+    // decide between "welcome back" and "create fresh", and a deleted account
+    // must read as the latter for the person who comes back.
+    return this.liveLink(channelType, externalId);
+  }
+  async listLinksForIdentity(identityId: string): Promise<IdentityLink[]> {
+    return orderedBy(
+      [...this.links.values()].filter(
+        (l) => l.identity_id === identityId && l.deleted_at === null,
+      ),
+      (l) => l.created_at,
+      (l) => l.identity_link_id,
+    );
+  }
+  async tombstoneLinksForIdentity(
+    identityId: string,
+    deletedAt: string,
+    _scope?: TransactionScope,
+  ): Promise<void> {
+    for (const [id, link] of [...this.links]) {
+      if (link.identity_id !== identityId || link.deleted_at !== null) continue;
+      journalMapWrite(_scope, this.links, id);
+      putRow("identity_link", this.links, id, { ...link, deleted_at: deletedAt });
+    }
   }
 
   /**
@@ -83,25 +131,6 @@ export class InMemoryIdentityRepository implements IdentityRepository {
   }
   async listIdentities(): Promise<Identity[]> {
     return orderedBy(this.identities.values(), (i) => i.created_at, (i) => i.identity_id);
-  }
-
-  async insertLink(link: IdentityLink, _scope?: TransactionScope): Promise<void> {
-    const key = this.linkKey(link.channel_type, link.external_id);
-    if (this.links.has(key)) {
-      throw this.duplicate("identity_link_channel_type_external_id_key");
-    }
-    journalMapWrite(_scope, this.links, key);
-    putRow("identity_link", this.links, key, link);
-  }
-  async findLink(channelType: ChannelType, externalId: string): Promise<IdentityLink | undefined> {
-    return this.links.get(this.linkKey(channelType, externalId));
-  }
-  async listLinksForIdentity(identityId: string): Promise<IdentityLink[]> {
-    return orderedBy(
-      [...this.links.values()].filter((l) => l.identity_id === identityId),
-      (l) => l.created_at,
-      (l) => l.identity_link_id,
-    );
   }
 
   async insertPrincipal(principal: Principal, _scope?: TransactionScope): Promise<void> {
@@ -152,17 +181,31 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     journalMapWrite(_scope, this.sessions, session.session_id);
     putRow("session", this.sessions, session.session_id, session);
   }
+  async revokeSessionsForPrincipal(
+    principalId: string,
+    revokedAt: string,
+    _scope?: TransactionScope,
+  ): Promise<void> {
+    for (const [id, session] of [...this.sessions]) {
+      if (session.principal_id !== principalId || session.revoked_at !== null) continue;
+      journalMapWrite(_scope, this.sessions, id);
+      putRow("session", this.sessions, id, { ...session, revoked_at: revokedAt });
+    }
+  }
 
   async insertMembership(membership: Membership, _scope?: TransactionScope): Promise<void> {
     for (const existing of this.memberships.values()) {
       if (existing.membership_id === membership.membership_id) continue;
-      // Roles live in one row per pair, so a second row is a second answer to
-      // "what may this principal do here".
+      // Roles live in one live row per pair, so a second live row is a second
+      // answer to "what may this principal do here". A tombstoned one holds no
+      // answer and no slot — the partial unique index
+      // `membership_principal_org_active_key` in Postgres.
       if (
         existing.principal_id === membership.principal_id &&
-        existing.organization_id === membership.organization_id
+        existing.organization_id === membership.organization_id &&
+        existing.deleted_at === null
       ) {
-        throw this.duplicate("membership_principal_id_organization_id_key");
+        throw this.duplicate("membership_principal_org_active_key");
       }
     }
     journalMapWrite(_scope, this.memberships, membership.membership_id);
@@ -170,14 +213,30 @@ export class InMemoryIdentityRepository implements IdentityRepository {
   }
   async listMemberships(principalId: string): Promise<Membership[]> {
     return orderedBy(
-      [...this.memberships.values()].filter((m) => m.principal_id === principalId),
+      [...this.memberships.values()].filter(
+        (m) => m.principal_id === principalId && m.deleted_at === null,
+      ),
       (m) => m.created_at,
       (m) => m.membership_id,
     );
   }
   async findMembership(principalId: string, organizationId: string): Promise<Membership | undefined> {
     return [...this.memberships.values()].find(
-      (m) => m.principal_id === principalId && m.organization_id === organizationId,
+      (m) =>
+        m.principal_id === principalId &&
+        m.organization_id === organizationId &&
+        m.deleted_at === null,
     );
+  }
+  async tombstoneMembershipsForPrincipal(
+    principalId: string,
+    deletedAt: string,
+    _scope?: TransactionScope,
+  ): Promise<void> {
+    for (const [id, membership] of [...this.memberships]) {
+      if (membership.principal_id !== principalId || membership.deleted_at !== null) continue;
+      journalMapWrite(_scope, this.memberships, id);
+      putRow("membership", this.memberships, id, { ...membership, deleted_at: deletedAt });
+    }
   }
 }
