@@ -181,6 +181,10 @@ export const COLUMN_SHAPES: Readonly<Record<string, readonly ColumnShape[]>> = {
     { column: "external_id", type: "text", notNull: true },
     { column: "verified_at", type: "timestamptz", notNull: false },
     { column: "created_at", type: "timestamptz", notNull: true, databaseDefault: "now()" },
+    // Migration 0024 (D-XR-13): a tombstoned link keeps its row and frees its
+    // (channel_type, external_id) slot — the partial unique index
+    // `identity_link_channel_external_active_key`.
+    { column: "deleted_at", type: "timestamptz", notNull: false },
   ],
   // Claims and the answers they became, as migration 0021 reshaped what 0020
   // reshaped from the table 0001 created and nothing ever wrote to. Everything
@@ -256,6 +260,9 @@ export const COLUMN_SHAPES: Readonly<Record<string, readonly ColumnShape[]>> = {
     { column: "organization_id", type: "uuid", notNull: true },
     { column: "roles", type: "text array", notNull: true },
     { column: "created_at", type: "timestamptz", notNull: true, databaseDefault: "now()" },
+    // Migration 0024 (D-XR-13): a tombstoned membership holds no role and no
+    // slot — the partial unique index `membership_principal_org_active_key`.
+    { column: "deleted_at", type: "timestamptz", notNull: false },
   ],
   notification: [
     { column: "notification_id", type: "text", notNull: true },

@@ -31,6 +31,7 @@ interface LinkRow {
   external_id: string;
   verified_at: Date | null;
   created_at: Date;
+  deleted_at: Date | null;
 }
 
 interface PrincipalRow {
@@ -57,6 +58,7 @@ interface MembershipRow {
   organization_id: string;
   roles: Role[];
   created_at: Date;
+  deleted_at: Date | null;
 }
 
 const toIdentity = (row: IdentityRow): Identity => ({
@@ -77,6 +79,7 @@ const toLink = (row: LinkRow): IdentityLink => ({
   external_id: row.external_id,
   verified_at: iso(row.verified_at),
   created_at: isoRequired(row.created_at),
+  deleted_at: iso(row.deleted_at),
 });
 
 const toPrincipal = (row: PrincipalRow): Principal => ({
@@ -103,13 +106,14 @@ const toMembership = (row: MembershipRow): Membership => ({
   organization_id: row.organization_id,
   roles: [...row.roles],
   created_at: isoRequired(row.created_at),
+  deleted_at: iso(row.deleted_at),
 });
 
 const IDENTITY_COLUMNS = `identity_id, status, canonical_identity_id, display_name,
   created_at, updated_at, source_system, legacy_id`;
-const LINK_COLUMNS = `identity_link_id, identity_id, channel_type, external_id, verified_at, created_at`;
+const LINK_COLUMNS = `identity_link_id, identity_id, channel_type, external_id, verified_at, created_at, deleted_at`;
 const SESSION_COLUMNS = `session_id, principal_id, token_hash, channel_type, issued_at, expires_at, revoked_at`;
-const MEMBERSHIP_COLUMNS = `membership_id, principal_id, organization_id, roles, created_at`;
+const MEMBERSHIP_COLUMNS = `membership_id, principal_id, organization_id, roles, created_at, deleted_at`;
 
 /**
  * Postgres adapter for the identity ports.
@@ -179,7 +183,7 @@ export class PgIdentityRepository implements IdentityRepository {
 
   async insertLink(link: IdentityLink, scope: TransactionScope = NO_SCOPE): Promise<void> {
     await runner(this.pool, scope).query(
-      `insert into identity_link (${LINK_COLUMNS}) values ($1,$2,$3,$4,$5,$6)`,
+      `insert into identity_link (${LINK_COLUMNS}) values ($1,$2,$3,$4,$5,$6,$7)`,
       [
         link.identity_link_id,
         link.identity_id,
@@ -187,13 +191,19 @@ export class PgIdentityRepository implements IdentityRepository {
         link.external_id,
         link.verified_at,
         link.created_at,
+        link.deleted_at,
       ],
     );
   }
 
   async findLink(channelType: ChannelType, externalId: string): Promise<IdentityLink | undefined> {
+    // A tombstoned link does not resolve: the partial unique index
+    // `identity_link_channel_external_active_key` says only a live link holds
+    // the (channel_type, external_id) slot, so a person who deleted their
+    // account registers afresh rather than being resolved to a tombstone.
     const result = await this.pool.query<LinkRow>(
-      `select ${LINK_COLUMNS} from identity_link where channel_type = $1 and external_id = $2`,
+      `select ${LINK_COLUMNS} from identity_link
+       where channel_type = $1 and external_id = $2 and deleted_at is null`,
       [channelType, externalId],
     );
     const row = result.rows[0];
@@ -202,10 +212,24 @@ export class PgIdentityRepository implements IdentityRepository {
 
   async listLinksForIdentity(identityId: string): Promise<IdentityLink[]> {
     const result = await this.pool.query<LinkRow>(
-      `select ${LINK_COLUMNS} from identity_link where identity_id = $1 order by created_at, identity_link_id`,
+      `select ${LINK_COLUMNS} from identity_link
+       where identity_id = $1 and deleted_at is null
+       order by created_at, identity_link_id`,
       [identityId],
     );
     return result.rows.map(toLink);
+  }
+
+  async tombstoneLinksForIdentity(
+    identityId: string,
+    deletedAt: string,
+    scope: TransactionScope = NO_SCOPE,
+  ): Promise<void> {
+    await runner(this.pool, scope).query(
+      `update identity_link set deleted_at = $2
+       where identity_id = $1 and deleted_at is null`,
+      [identityId, deletedAt],
+    );
   }
 
   async insertPrincipal(principal: Principal, scope: TransactionScope = NO_SCOPE): Promise<void> {
@@ -280,25 +304,42 @@ export class PgIdentityRepository implements IdentityRepository {
     );
   }
 
+  async revokeSessionsForPrincipal(
+    principalId: string,
+    revokedAt: string,
+    scope: TransactionScope = NO_SCOPE,
+  ): Promise<void> {
+    // The same field `revokeSession` sets, for every live session at once, so
+    // the caller's own token dies inside the deletion's transaction (D-XR-13).
+    await runner(this.pool, scope).query(
+      `update session set revoked_at = $2
+       where principal_id = $1 and revoked_at is null`,
+      [principalId, revokedAt],
+    );
+  }
+
   async insertMembership(
     membership: Membership,
     scope: TransactionScope = NO_SCOPE,
   ): Promise<void> {
     await runner(this.pool, scope).query(
-      `insert into membership (${MEMBERSHIP_COLUMNS}) values ($1,$2,$3,$4,$5)`,
+      `insert into membership (${MEMBERSHIP_COLUMNS}) values ($1,$2,$3,$4,$5,$6)`,
       [
         membership.membership_id,
         membership.principal_id,
         membership.organization_id,
         membership.roles,
         membership.created_at,
+        membership.deleted_at,
       ],
     );
   }
 
   async listMemberships(principalId: string): Promise<Membership[]> {
     const result = await this.pool.query<MembershipRow>(
-      `select ${MEMBERSHIP_COLUMNS} from membership where principal_id = $1 order by created_at, membership_id`,
+      `select ${MEMBERSHIP_COLUMNS} from membership
+       where principal_id = $1 and deleted_at is null
+       order by created_at, membership_id`,
       [principalId],
     );
     return result.rows.map(toMembership);
@@ -309,10 +350,23 @@ export class PgIdentityRepository implements IdentityRepository {
     organizationId: string,
   ): Promise<Membership | undefined> {
     const result = await this.pool.query<MembershipRow>(
-      `select ${MEMBERSHIP_COLUMNS} from membership where principal_id = $1 and organization_id = $2`,
+      `select ${MEMBERSHIP_COLUMNS} from membership
+       where principal_id = $1 and organization_id = $2 and deleted_at is null`,
       [principalId, organizationId],
     );
     const row = result.rows[0];
     return row ? toMembership(row) : undefined;
+  }
+
+  async tombstoneMembershipsForPrincipal(
+    principalId: string,
+    deletedAt: string,
+    scope: TransactionScope = NO_SCOPE,
+  ): Promise<void> {
+    await runner(this.pool, scope).query(
+      `update membership set deleted_at = $2
+       where principal_id = $1 and deleted_at is null`,
+      [principalId, deletedAt],
+    );
   }
 }

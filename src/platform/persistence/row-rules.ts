@@ -152,7 +152,7 @@ function rule(
 export const VOCABULARIES = {
   actor_type: ["principal", "system", "service"],
   geo_status: ["active", "inactive"],
-  identity_status: ["active", "suspended", "merged"],
+  identity_status: ["active", "suspended", "merged", "deleted"],
   organization_status: ["active", "suspended"],
   channel_type: ["telegram", "phone", "email", "web", "partner_api"],
   issuable_channel_type: ["telegram", "phone", "email", "web"],

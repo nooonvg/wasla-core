@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.wasla/events/core.identity.account.deleted.v1.schema.json",
+  "title": "core.identity.account.deleted v1",
+  "description": "Emitted by CORE when a person deletes their own account (D-XR-13). The rows stay as tombstones, so this event is the only way consumers learn the person is gone: MOVE and MARKET purge their own copies of the person's data, keyed by the ids below. Neither consumer receives identity attributes beyond the ids - the display name is already scrubbed, and the event deliberately carries none. One person, one event: the deletion is idempotent, so a repeat of a committed deletion emits nothing (and over HTTP it cannot even arrive authenticated - the sessions are revoked).",
+  "type": "object",
+  "required": ["identity_id", "principal_id", "deleted_at"],
+  "additionalProperties": false,
+  "properties": {
+    "identity_id": { "type": "string", "format": "uuid" },
+    "principal_id": { "type": "string", "format": "uuid" },
+    "deleted_at": { "type": "string", "format": "date-time" }
+  },
+  "examples": [
+    {
+      "identity_id": "3f1c2b64-8f2e-4f52-9d1a-1c6bb9f9d001",
+      "principal_id": "8a2c6d11-2f77-4a0e-9a44-b1b7f3c2e002",
+      "deleted_at": "2026-01-02T00:00:00.000Z"
+    }
+  ]
+}

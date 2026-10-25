@@ -112,7 +112,9 @@ const CASES: readonly ParityCase[] = [
     },
   },
   {
-    rule: "identity_link_channel_type_external_id_key",
+    // D-XR-13 renamed the constraint: it is a partial index now, so a
+    // tombstoned link frees the channel slot instead of holding it forever.
+    rule: "identity_link_channel_external_active_key",
     what: "one channel account pointing at two identities",
     refusal: "error",
     async probe(store) {
@@ -128,6 +130,7 @@ const CASES: readonly ParityCase[] = [
           external_id: "tg-1",
           verified_at: NOW,
           created_at: NOW,
+          deleted_at: null,
         },
         NO_SCOPE,
       );
@@ -140,6 +143,7 @@ const CASES: readonly ParityCase[] = [
             external_id: "tg-1",
             verified_at: NOW,
             created_at: NOW,
+            deleted_at: null,
           },
           NO_SCOPE,
         ),
@@ -201,7 +205,9 @@ const CASES: readonly ParityCase[] = [
     },
   },
   {
-    rule: "membership_principal_id_organization_id_key",
+    // D-XR-13 renamed the constraint: it is a partial index now, so a
+    // tombstoned membership frees the seat instead of holding it forever.
+    rule: "membership_principal_org_active_key",
     what: "two membership rows for one principal in one organization, with different roles",
     refusal: "error",
     async probe(store) {
@@ -215,6 +221,7 @@ const CASES: readonly ParityCase[] = [
           organization_id: organizationId,
           roles: ["org_member"],
           created_at: NOW,
+          deleted_at: null,
         },
         NO_SCOPE,
       );
@@ -226,6 +233,7 @@ const CASES: readonly ParityCase[] = [
             organization_id: organizationId,
             roles: ["org_admin"],
             created_at: NOW,
+            deleted_at: null,
           },
           NO_SCOPE,
         ),

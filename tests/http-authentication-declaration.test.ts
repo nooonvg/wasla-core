@@ -176,10 +176,12 @@ describe("every route declares whether it needs a credential", () => {
     // By name, not by count: a route added later that quietly declares itself
     // anonymous fails here, which is the whole point of writing the list out.
     expect(anonymous.sort()).toEqual([...ANONYMOUS].sort());
-    expect(registrations.filter((route) => route.authentication.required).length).toBe(49);
+    expect(registrations.filter((route) => route.authentication.required).length).toBe(50);
     // والقنوةُ الجديدةُ (XR-8.5) مجهولةٌ كقائمةِ الهوياتِ: دليلُ الشخصِ يصلُ في
     // الجسمِ لا في الترويسةِ — لكنها دخولٌ لا إنشاءُ محتوى، فأُدرجت في القائمةِ
     // بالاسمِ كما تقتضي قاعدةُ «بلا عددٍ». عدّادُ المصادَقِ عليهِ لا يتغيرُ: 49.
+    // 50 منذُ حذفِ الحسابِ (D-XR-13): مسارٌ مصادَقٌ عليهِ بلا جسمٍ، لا يُنشئُ
+    // محتوى فيصلَ في الترويسةِ — فهوَ من عدّادِ المصادَقِ عليهِ لا من قائمةِ المجهولِ.
   });
 
   it("makes every anonymous route say why, in a sentence", () => {
@@ -455,9 +457,11 @@ describe("the contract publishes the refusal", () => {
     // Measured at 3 of 46 before this milestone. 48 since milestone 31 made the
     // two session routes require a credential. 50 since XR-8.5 added the web
     // login surface, whose 401 is the refused proof, not a missing credential.
+    // 51 since D-XR-13 added the deletion route, whose 401 is the answered
+    // retry of a committed deletion — the caller is nobody now.
     expect(missing).toEqual([]);
     expect(spurious).toEqual([]);
-    expect(documented.size).toBe(50);
+    expect(documented.size).toBe(51);
   });
 
   it("explains the ordering where a client will read it", () => {

@@ -157,7 +157,12 @@ describe("a route documents every refusal it can produce", () => {
     // A guard against the whole gate passing because the matrix stopped
     // producing anything — the failure mode milestone 34's sweep had.
     expect(refusals.length).toBeGreaterThan(100);
-    expect(new Set(refusals.map((refusal) => refusal.status))).toEqual(new Set([400, 401, 403, 404]));
+    // 409 since D-XR-13: the uniform matrix reaches it on its own, because the
+    // deletion route's caller here is a platform admin, and an admin's account
+    // is not theirs to delete alone — the organizations that would be left
+    // unadministered are named in the refusal. A deliberate refusal, so 409 is
+    // now a matrix answer rather than a comment.
+    expect(new Set(refusals.map((refusal) => refusal.status))).toEqual(new Set([400, 401, 403, 404, 409]));
   });
 
   it("documents every refusal the matrix produced, for the operation that produced it", () => {

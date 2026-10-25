@@ -33,9 +33,10 @@
  * through the service, and the refusal being measured is still taken over
  * `router.handle`.
  */
+import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { runScenario, type Scenario } from "./support/http-scenario.js";
-import { loadContract } from "./support/openapi.js";
+import { loadContract, violations } from "./support/openapi.js";
 import { makeEvent } from "../src/platform/eventing/envelope.js";
 import { FixedClock } from "../src/platform/clock.js";
 
@@ -186,6 +187,12 @@ async function reuseKey(context: Context, label: string): Promise<Answer> {
 }
 
 const DRIVERS: readonly Driver[] = [
+  {
+    label: "POST /v1/me/deletion",
+    mechanism: "domain",
+    message: "transfer or close the organizations you administer before deleting your account",
+    run: (context) => context.send("POST", "/v1/me/deletion"),
+  },
   {
     label: "POST /v1/memberships",
     mechanism: "domain",
@@ -470,7 +477,69 @@ describe("the documented conflict surface", () => {
       (driver) => `${driver.label} -> 409 conflict ${driver.message}`,
     );
     expect(seen).toEqual(expected);
+
+    // And in the shape each operation declares for its own 409 — the response
+    // the contract points at, not the generic `Error`. `DeletionConflict`
+    // carries `details.organization_ids`, and a gate that only read `code` and
+    // `message` would never notice that member drifting or disappearing: the
+    // refusal matrix validates refusals against `Error`, which is exactly why
+    // this check has to reach for the operation's own schema.
+    const contract = loadContract();
+    for (const driver of DRIVERS) {
+      const operation = contract.operations.find(
+        (candidate) =>
+          `${candidate.method.toUpperCase()} ${candidate.path}` === driver.label,
+      );
+      expect(operation, `${driver.label} should be in the contract`).toBeDefined();
+      const response = operation!.responses.get("409");
+      expect(
+        response?.schema,
+        `${driver.label} should declare a body for its 409`,
+      ).toBeDefined();
+      const problems = violations(
+        answers.get(driver.label)!.body,
+        response!.schema!,
+        `${driver.label} 409`,
+      );
+      expect(problems, `${driver.label} 409 should answer its declared schema`).toEqual([]);
+    }
   }, 120_000);
+
+  it("enforces the members DeletionConflict declares, not just decorates them", () => {
+    // A negative check, because a validator that accepts anything proves
+    // nothing: the same schema that has to accept the real answer above must
+    // refuse the two ways `details.organization_ids` can be wrong — not an
+    // array at all, or an array whose member is not a uuid.
+    const contract = loadContract();
+    const operation = contract.operations.find(
+      (candidate) =>
+        candidate.path === "/v1/me/deletion" && candidate.method === "POST",
+    );
+    expect(operation).toBeDefined();
+    const schema = operation!.responses.get("409")!.schema!;
+    const refusal = {
+      code: "conflict",
+      message:
+        "transfer or close the organizations you administer before deleting your account",
+      retryable: false,
+      correlation_id: randomUUID(),
+      details: { organization_ids: [randomUUID()] },
+    };
+    expect(violations(refusal, schema)).toEqual([]);
+    expect(
+      violations({ ...refusal, details: { organization_ids: randomUUID() } }, schema).some(
+        (problem) => problem.includes("expected an array"),
+      ),
+      "a string where the contract says array must be refused",
+    ).toBe(true);
+    expect(
+      violations(
+        { ...refusal, details: { organization_ids: ["not a uuid"] } },
+        schema,
+      ).some((problem) => problem.includes("is not a uuid")),
+      "a member that is not a uuid must be refused",
+    ).toBe(true);
+  });
 
   it("declares which mechanism reaches each conflict, and the census is exact", () => {
     const byMechanism = new Map<Mechanism, string[]>();

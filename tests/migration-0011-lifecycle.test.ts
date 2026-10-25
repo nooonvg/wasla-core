@@ -218,8 +218,10 @@ describe.skipIf(!url)("migration 0011 lifecycle", () => {
     );
     expect(column.rows).toHaveLength(1);
 
-    // العكسُ: أحدثُ ترحيلٍ هو 0023، فتراجُعُ واحدٍ يرفعُهُ — الجدولُ وسطرُ
-    // الترحيلِ معًا، لا نصفُ عكسٍ يتركُ أحدهما.
+    // العكسُ: 0024 صارَ أحدثَ من 0023 (أعمدةُ الشاهدِ فوقَ سطرِ الترحيلِ هذا)،
+    // فتراجُعُ واحدٌ يرفعُهُ أوّلًا، والذي بعدهُ يرفعُ 0023 نفسَهُ — الجدولُ
+    // وسطرُ الترحيلِ معًا، لا نصفُ عكسٍ يتركُ أحدهما.
+    await migrate("down");
     const down = await migrate("down");
     expect(down.stdout).toContain("0023_web_sign_in_nonces");
     expect(
@@ -247,6 +249,78 @@ describe.skipIf(!url)("migration 0011 lifecycle", () => {
         "select version from schema_migrations where version = '0023_web_sign_in_nonces'",
       )).rows,
     ).toHaveLength(1);
+  });
+
+  it("0024: the tombstone columns and partial indexes appear with the journal row, disappear with it, and return — a true inverse", async () => {
+    // 0023 أعادَ كلَّ شيءٍ بـ«up» الأخيرةِ، فالترحيلُ 0024 مطبَّقٌ قبلَ أيِّ سؤالٍ.
+    const applied = await query<{ version: string }>(
+      "select version from schema_migrations where version = '0024_account_deletion'",
+    );
+    expect(applied.rows).toHaveLength(1);
+
+    // فالأعمدةُ موجودةٌ، والفهرسانِ الجزئيانِ يحملانِ القاعدةَ، والقيدانِ
+    // القديمانِ الكاملانِ مرفوعانِ — القيدُ الذي كانَ يمنعُ التكرارَ مهما ماتَ
+    // السطرُ لم يعُد موجودًا، لأنَّ الفهرسَ الجزئيَّ هو الذي يقولُ «الوحيدُ بينَ
+    // الأحياءِ» في المخططِ نفسِه.
+    for (const [table, column] of [
+      ["identity_link", "deleted_at"],
+      ["membership", "deleted_at"],
+    ] as const) {
+      const found = await query<{ column_name: string }>(
+        `select column_name from information_schema.columns
+         where table_name = '${table}' and column_name = '${column}'`,
+      );
+      expect(found.rows, `${table}.${column}`).toHaveLength(1);
+    }
+    const indexes = await query<{ indexname: string }>(
+      `select indexname from pg_indexes
+       where indexname in ('identity_link_channel_external_active_key', 'membership_principal_org_active_key')`,
+    );
+    expect(indexes.rows).toHaveLength(2);
+    const oldConstraints = await query<{ conname: string }>(
+      `select conname from pg_constraint
+       where conname in ('identity_link_channel_type_external_id_key', 'membership_principal_id_organization_id_key')`,
+    );
+    expect(oldConstraints.rows).toHaveLength(0);
+
+    // العكسُ: تراجُعٌ واحدٌ يرفعُ 0024 — فهو الأحدثُ — فتختفي الأعمدةُ
+    // والفهرسانِ معًا، ويعودُ القيدانِ الكاملانِ، لا نصفُ عكسٍ يتركُ أحدهما.
+    const down = await migrate("down");
+    expect(down.stdout).toContain("0024_account_deletion");
+    for (const [table, column] of [
+      ["identity_link", "deleted_at"],
+      ["membership", "deleted_at"],
+    ] as const) {
+      const found = await query<{ column_name: string }>(
+        `select column_name from information_schema.columns
+         where table_name = '${table}' and column_name = '${column}'`,
+      );
+      expect(found.rows, `${table}.${column}`).toHaveLength(0);
+    }
+    const indexesGone = await query<{ indexname: string }>(
+      `select indexname from pg_indexes
+       where indexname in ('identity_link_channel_external_active_key', 'membership_principal_org_active_key')`,
+    );
+    expect(indexesGone.rows).toHaveLength(0);
+    const constraintsBack = await query<{ conname: string }>(
+      `select conname from pg_constraint
+       where conname in ('identity_link_channel_type_external_id_key', 'membership_principal_id_organization_id_key')`,
+    );
+    expect(constraintsBack.rows).toHaveLength(2);
+
+    // والعودةُ: up مرتينِ — أولاهما تأسيسٌ والثانيةُ عدمٌ (ON CONFLICT)،
+    // والأعمدةُ والفهرسانِ يعودانِ كما كانا.
+    await migrate("up");
+    const restored = await query<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_name = 'membership' and column_name = 'deleted_at'`,
+    );
+    expect(restored.rows).toHaveLength(1);
+    await migrate("up");
+    const journal = await query<{ version: string }>(
+      "select version from schema_migrations where version = '0024_account_deletion'",
+    );
+    expect(journal.rows).toHaveLength(1);
   });
 
 });

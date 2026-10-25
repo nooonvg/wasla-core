@@ -214,6 +214,7 @@ async function populate(store: Persistence): Promise<Population> {
         external_id: `parity-${index}`,
         verified_at: null,
         created_at: linkCreated[index] as string,
+        deleted_at: null,
       },
       NO_SCOPE,
     );
@@ -241,6 +242,7 @@ async function populate(store: Persistence): Promise<Population> {
         organization_id: organizations[index] as string,
         roles: ["org_member"],
         created_at: membershipCreated[index] as string,
+        deleted_at: null,
       },
       NO_SCOPE,
     );

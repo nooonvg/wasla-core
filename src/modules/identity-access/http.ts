@@ -1,6 +1,6 @@
 import { unauthenticated } from "../../platform/errors.js";
 import { AUTHENTICATED, anonymous } from "../../platform/http/authentication.js";
-import { objectBody } from "../../platform/http/body.js";
+import { NO_BODY, objectBody } from "../../platform/http/body.js";
 import { natural, newEachTime } from "../../platform/http/retry.js";
 import type { RequestContext, Router } from "../../platform/http/router.js";
 import { CHANNEL_TYPES } from "./domain.js";
@@ -194,6 +194,42 @@ export function registerIdentityRoutes(
     );
     return { status: 204, body: null };
   });
+
+  // D-XR-13, closed: the person deletes their own account from inside the
+  // app. Every wrapper must offer it, because Apple's 5.1.1(v) makes it a
+  // condition of shipping, and the ecosystem's web journey (XR-8.3) names it in
+  // its acceptance: دخول، بحث، طلب، خروج، حذف حساب.
+  //
+  // The entitlement is the one `revokeSessionAs` already answers for logout —
+  // your own account is yours to end, and no permission is asked for — with one
+  // addition: a service credential may never end one, because it speaks for a
+  // channel, not for the person. The refusal for administrators (a 409 naming
+  // their organizations) and the tombstone semantics live in the service, next
+  // to the transaction they decide.
+  //
+  // `natural`: a retry of a committed deletion finds the sessions already
+  // revoked and answers `401` — the caller is nobody now — which is the same
+  // answer the first call's effect owes. There is nothing a repeat could create.
+  router.post(
+    "/v1/me/deletion",
+    NO_BODY,
+    AUTHENTICATED,
+    natural(
+      "deletion is a state machine that is a no-op once it has happened: a repeat arrives with a token the deletion itself revoked, and is answered as unauthenticated rather than re-deleting",
+    ),
+    async (ctx) => {
+      const actor = currentPrincipal(ctx);
+      await identity.deleteAccount(actor, {
+        correlation_id: ctx.correlation_id,
+      });
+      // A 204 carries no body, and the ids the deletion committed with are in
+      // the audit trail and the event, not in a response header CORE would have
+      // to declare: `sealHeaders` refuses an undeclared response header, and a
+      // deletion needs no new declared surface to be observable — its effect is
+      // that the caller's next request answers `401`.
+      return { status: 204, body: null };
+    },
+  );
 
   // Service-to-service authorization probe used by MOVE and MARKET.
   router.post(

@@ -143,6 +143,7 @@ export class IdentityService {
       external_id: input.external_id,
       verified_at: now.toISOString(),
       created_at: now.toISOString(),
+      deleted_at: null,
     };
 
     await withTransaction(this.tx, async (uow) => {
@@ -180,6 +181,108 @@ export class IdentityService {
     });
 
     return { identity, principal, created: true };
+  }
+
+  /**
+   * D-XR-13, closed here: the person deletes their own account, and this is the
+   * entitlement `revokeSessionAs` already answers for logout — your own account
+   * is yours to end, so no permission is required, but a service credential may
+   * never end one: it speaks for a channel, not for the person.
+   *
+   * What a deletion is here: a **tombstone, not a row removal**. In one
+   * transaction — the identity is `deleted`, its display name is scrubbed, its
+   * links and memberships are tombstoned, and every live session is revoked
+   * (the caller's own token included, so the response leaves the caller logged
+   * out). The rows stay, because the audit trail is append-only and
+   * `tests/delete-parity.test.ts` keeps row removal to the four declared
+   * paths — none of which is this. Reads stop seeing tombstoned rows, so the
+   * account holds no role anywhere and the channel slot frees for the person
+   * who comes back and registers afresh.
+   *
+   * One refusal, and it is a conflict rather than a silent side effect: while
+   * the caller **administers** an organization — `org_admin` or `platform_admin`
+   * — deleting the account would leave that organization (or the platform)
+   * without an administrator. Transfer or close those first. A plain member's
+   * memberships are tombstoned with the account: an organization does not lose
+   * an administrator because a member left.
+   *
+   * The event is the contract the products need: MOVE and MARKET hold their own
+   * copies of a person's data (a driver file, a store's staff), and
+   * `core.identity.account.deleted` is the only way they learn the person is
+   * gone — carrying the ids to purge and no personal data of its own.
+   */
+  async deleteAccount(
+    actor: AuthenticatedPrincipal,
+    input: { correlation_id: string },
+  ): Promise<{ identity_id: string; deleted_at: string }> {
+    if (actor.service_name !== null) {
+      throw forbidden("a service credential cannot delete an account; the person it speaks for must");
+    }
+    const identity = await this.repo.getIdentity(actor.identity_id);
+    if (!identity) throw notFound("identity not found");
+    // Already deleted: the same answer a retry of a committed deletion owes,
+    // with no second event and no second audit row. Unreachable over HTTP once
+    // the sessions are revoked; reachable if a caller holds the service object.
+    if (identity.status === "deleted") {
+      return { identity_id: identity.identity_id, deleted_at: identity.updated_at };
+    }
+
+    // Tombstoning a membership is silent only when it cannot strand an
+    // organization: an administrator's exit is a transfer, not a deletion.
+    const memberships = await this.repo.listMemberships(actor.principal_id);
+    const administered = memberships.filter((m) =>
+      m.roles.some((role) => role === "org_admin" || role === "platform_admin"),
+    );
+    if (administered.length > 0) {
+      throw conflict(
+        "transfer or close the organizations you administer before deleting your account",
+        {
+          organization_ids: administered.map((m) => m.organization_id),
+        },
+      );
+    }
+
+    const now = this.clock.now();
+    const deletedIdentity: Identity = {
+      ...identity,
+      status: "deleted",
+      display_name: null,
+      updated_at: now.toISOString(),
+    };
+    await withTransaction(this.tx, (uow) => {
+      uow.stage(async (scope) => {
+        await this.repo.revokeSessionsForPrincipal(actor.principal_id, now.toISOString(), scope);
+        await this.repo.tombstoneMembershipsForPrincipal(actor.principal_id, now.toISOString(), scope);
+        await this.repo.tombstoneLinksForIdentity(actor.identity_id, now.toISOString(), scope);
+        await this.repo.updateIdentity(deletedIdentity, scope);
+      });
+      uow.emit(
+        makeEvent({
+          event_type: "core.identity.account.deleted",
+          version: 1,
+          producer: PRODUCER,
+          occurred_at: now,
+          correlation_id: input.correlation_id,
+          entity_type: "identity",
+          entity_id: identity.identity_id,
+          payload: {
+            identity_id: identity.identity_id,
+            principal_id: actor.principal_id,
+            deleted_at: now.toISOString(),
+          },
+        }),
+      );
+      uow.audit({
+        actor_type: "principal",
+        actor_id: actor.principal_id,
+        action: "identity.account_deleted",
+        entity_type: "identity",
+        entity_id: identity.identity_id,
+        correlation_id: input.correlation_id,
+        metadata: {},
+      });
+    });
+    return { identity_id: identity.identity_id, deleted_at: now.toISOString() };
   }
 
   /** Boundary, outbox and audit log — the three things a commit needs. */
@@ -418,6 +521,7 @@ export class IdentityService {
       organization_id: input.organization_id,
       roles: input.roles,
       created_at: this.clock.now().toISOString(),
+      deleted_at: null,
     };
     // Membership is an authorization fact. The grant and the record of who
     // granted it commit together or not at all.
@@ -474,6 +578,7 @@ export class IdentityService {
       organization_id: input.organization_id,
       roles: ["org_admin"],
       created_at: this.clock.now().toISOString(),
+      deleted_at: null,
     };
     uow.stage((scope) => this.repo.insertMembership(membership, scope));
     uow.audit({

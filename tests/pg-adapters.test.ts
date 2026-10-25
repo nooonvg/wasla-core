@@ -109,6 +109,7 @@ function identityLink(identityId: string, externalId = randomUUID()) {
     external_id: externalId,
     verified_at: null,
     created_at: AT,
+    deleted_at: null,
   };
 }
 
@@ -242,6 +243,7 @@ describe.each(harnesses)("%s adapters", (_name, harness) => {
         external_id: "tg-1",
         verified_at: null,
         created_at: AT,
+        deleted_at: null,
       };
       await backend.identity.insertLink(link, NO_SCOPE);
       expect(await backend.identity.findLink("telegram", "tg-1")).toEqual(link);
@@ -295,6 +297,7 @@ describe.each(harnesses)("%s adapters", (_name, harness) => {
         organization_id: org.organization_id,
         roles: ["org_admin" as const, "org_member" as const],
         created_at: AT,
+        deleted_at: null,
       };
       await backend.identity.insertMembership(membership, NO_SCOPE);
 

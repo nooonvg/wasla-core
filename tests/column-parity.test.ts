@@ -214,6 +214,7 @@ describe("column parity: refusals the database also raises", () => {
         organization_id: randomUUID(),
         roles: "admin",
         created_at: "2026-09-13T00:00:00.000Z",
+        deleted_at: null,
       }),
     ).toBe(`malformed array literal: "admin"`);
   });
@@ -284,8 +285,10 @@ describe.skipIf(!url)("column parity against the live schema", () => {
     // 12 of `idempotency_key`, which milestone 32 made a table the code reads
     // and writes rather than one nothing touched. (263 before that milestone,
     // 271 after it: milestone 33 added `state`, `claim_token`, `claimed_at` and
-    // `completed_at` so the row can exist before the answer does.)
-    expect(columns.length, "no columns read: the gate would pass vacuously").toBe(281);
+    // `completed_at` so the row can exist before the answer does. 283 since
+    // D-XR-13: `deleted_at` on `identity_link` and `membership` — a tombstone
+    // needs its instant, and the live schema is the one that proves it.)
+    expect(columns.length, "no columns read: the gate would pass vacuously").toBe(283);
     const problems: string[] = [];
     for (const column of columns) {
       const shapes = COLUMN_SHAPES[column.table] ?? [];
