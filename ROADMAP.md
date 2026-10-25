@@ -62,11 +62,38 @@ gate's scenario drives the route to its real `204` through that same person.
 A five-test behaviour file reads the choice back: deleted, nameless,
 unauthenticated, tombstoned, slots freed, event and audit row exactly once
 with the idempotent repeat emitting nothing, administrators refused by name,
-service credentials refused. **942** tests pass without `DATABASE_URL`
-(148 skipped, the cluster pass), and the suite's count moved 936 → 942.
+service credentials refused. **943** tests pass without `DATABASE_URL`
+(148 skipped, the cluster pass), and the suite's count moved 936 → 943.
 **Verification at this working tree:** `tsc --noEmit` clean; `npm run verify`
 green — typecheck, the full suite, governance, contracts (27 event schemas, 18
 emitted types covered) and the test partition (75 files, 74 suite / 1 cluster).
+
+**And then the review made it honest (the hardening pass).** The first green
+run had three holes a reviewer found, and each is now a property the suite
+measures instead of a shape it assumes. First, the person the behaviour file
+acted on held **no membership at all** — `person()` defaulted to no roles, so
+the membership assertions were reading an empty list that nothing had ended;
+the person now joins as a plain `org_member`, and the live membership is read
+back *before* the deletion ends it. Second, one session proves one session: the
+contract revokes them all, so the person now holds sessions on three channels
+(`web`, `telegram`, `email` — `partner_api` stays out, B-42) and every one of
+them has to be dead afterwards. Third, the behaviour ran on memory only —
+tombstones written by SQL through migration 0024's partial unique indexes are
+a different proof from a `Map` marking a row, so the same suite now runs on
+Postgres too when `DATABASE_URL` is present, with its assertions scoped to the
+entities each test created because the shared worker database already carries
+the scenario's own deletion events. Fourth, the conflict gate read only `code`
+and `message` — it never touched the `DeletionConflict` body it exists to
+check — so every documented `409` is now validated against the schema its own
+operation declares for it, with a negative check proving the gate has teeth:
+a `details.organization_ids` that is a string, or an array whose member is not
+a uuid, is refused. That check needed one more correction to the shared
+checker, recorded here as the second deliberate refinement of the cycle:
+`allOf` is an intersection, not a re-declaration — a key named in two branches
+(`Error`'s free-form `details`, `DeletionConflict`'s narrow member list) must
+satisfy **both**, so the merged spec composes them instead of refusing the
+pair; contradictory branches still fail loudly, because nothing satisfies
+both.
 
 ### XR-8.5's entry, kept as written
 

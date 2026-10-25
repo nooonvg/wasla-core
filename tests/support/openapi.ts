@@ -515,7 +515,17 @@ function merged(spec: Record<string, Yaml>, at: string): Record<string, Yaml> | 
     for (const [key, value] of Object.entries((part["properties"] ?? {}) as Record<string, Yaml>)) {
       const existing = properties[key];
       if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(value)) {
-        return [`${at}: allOf declares "${key}" twice with different schemas`];
+        // JSON Schema's `allOf` is an intersection, not a re-declaration: a key
+        // named in two branches has to satisfy **both** schemas, so the merged
+        // spec composes them instead of refusing the pair. Refusing was the
+        // first reading, and it made a lawful narrowing impossible to express —
+        // `DeletionConflict` extends `Error`'s free-form `details` with
+        // `organization_ids`, and the real body must clear both the broad
+        // object and the narrow member list. Contradictory branches still fail
+        // loudly: nothing satisfies both, so every value the route returns is
+        // reported as a violation.
+        properties[key] = { allOf: [existing, value] };
+        continue;
       }
       properties[key] = value;
     }
