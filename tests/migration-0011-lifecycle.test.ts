@@ -218,11 +218,10 @@ describe.skipIf(!url)("migration 0011 lifecycle", () => {
     );
     expect(column.rows).toHaveLength(1);
 
-    // العكسُ: 0024 صارَ أحدثَ من 0023 (أعمدةُ الشاهدِ فوقَ سطرِ الترحيلِ هذا)،
-    // فتراجُعُ واحدٌ يرفعُهُ أوّلًا، والذي بعدهُ يرفعُ 0023 نفسَهُ — الجدولُ
+    // العكسُ: كلُّ ترحيلٍ أحدثَ من 0023 يُرفَعُ أوّلًا (0025 ثمّ 0024 — والقائمةُ تنمو)،
+    // فحلقةُ downThrough ترفعُ 0023 نفسَهُ في النهايةِ — الجدولُ
     // وسطرُ الترحيلِ معًا، لا نصفُ عكسٍ يتركُ أحدهما.
-    await migrate("down");
-    const down = await migrate("down");
+    const down = await downThrough("0023_web_sign_in_nonces");
     expect(down.stdout).toContain("0023_web_sign_in_nonces");
     expect(
       (await query<{ table_name: string }>(
@@ -283,9 +282,9 @@ describe.skipIf(!url)("migration 0011 lifecycle", () => {
     );
     expect(oldConstraints.rows).toHaveLength(0);
 
-    // العكسُ: تراجُعٌ واحدٌ يرفعُ 0024 — فهو الأحدثُ — فتختفي الأعمدةُ
+    // العكسُ: تراجُعٌ يرفعُ 0025 الأحدثَ أوّلًا ثمّ 0024 نفسَهُ (حلقةُ downThrough) — فتختفي الأعمدةُ
     // والفهرسانِ معًا، ويعودُ القيدانِ الكاملانِ، لا نصفُ عكسٍ يتركُ أحدهما.
-    const down = await migrate("down");
+    const down = await downThrough("0024_account_deletion");
     expect(down.stdout).toContain("0024_account_deletion");
     for (const [table, column] of [
       ["identity_link", "deleted_at"],
