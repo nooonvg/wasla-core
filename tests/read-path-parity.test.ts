@@ -106,6 +106,16 @@ const UNREAD: readonly Unread[] = [
     why: "same as web_sign_in_nonces.created_at: the store answers a boolean, returns no record, and no consumer of the column exists",
   },
   {
+    // جسرُ المصغّرِ (D-XR-13، تتمةُ CLM-0701/0702): مخزنُ الأدلّةِ لا يعيدُ
+    // صفًّا — سؤالُهُ الوحيدُ «هل فازَ هذا الاستهلاكُ؟» (boolean من إدخالٍ
+    // مشروطٍ ON CONFLICT DO NOTHING). العمودُ يُكتبُ عبرَ putRow فتخضعُ
+    // كتابتُهُ لبوابةِ الأعمدةِ كاملةً؛ ما لا يحدثُ هو إعادتُهُ — ولا
+    // مستهلكًا لهُ بينَ الخلفيتينِ أصلًا.
+    table: "mini_app_init_data_proofs",
+    column: "created_at",
+    why: "the mini-app proof store returns no record at all: it answers one boolean question (did this proof's consumption win), and no consumer of the column exists",
+  },
+  {
     table: "inbox",
     column: "consumer",
     why: "InboxStore returns no record: claim reports whether the insert won, seen is `select 1`. Half of the primary key, so it is bound on every read as a predicate rather than returned",
@@ -227,7 +237,9 @@ describe("read-path parity: the columns a read can surface", () => {
     // Vacuity guard. A parser that silently matched nothing would make every
     // gate below pass, so the shape of its own output is checked first.
     // 31 since milestone 32 added `idempotency_key`; 30 before it.
-    expect(shapedTables().length, "no shaped tables: the gates would be vacuous").toBe(32);
+    // 33 since the mini-app bridge (D-XR-13, CLM-0701/0702 follow-up) added
+    // the single-use proof ledger's table.
+    expect(shapedTables().length, "no shaped tables: the gates would be vacuous").toBe(33);
     expect(reads.size, "no table is read anywhere: the parser found nothing").toBeGreaterThan(25);
     const surfaced = [...reads.values()].reduce((total, set) => total + set.size, 0);
     expect(surfaced, "suspiciously few columns parsed").toBeGreaterThan(150);

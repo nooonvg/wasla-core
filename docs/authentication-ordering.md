@@ -158,3 +158,21 @@ did.
 It also does not claim the deployment is safe. `/metrics` and `/ready` are
 anonymous by declaration and must be kept off the public internet by the
 topology, which is **B-5**, still open.
+
+## Census since, kept current
+
+The table above is milestone 31's census, kept as written. Three later
+surfaces joined the anonymous set, each still by name with its reason, and the
+census the gate now asserts is **seven** routes: milestone 31's six above,
+plus `POST /v1/web-session/telegram/nonce` and `POST /v1/web-session/telegram`
+(XR-8.5: the nonce pair is the anti-replay binding of a browser login, and the
+login itself is how the credential is obtained — the same standing decision as
+B-39), and since the mini-app bridge
+(D-XR-13, CLM-0701/0702 follow-up) `POST /v1/web-session/telegram/init-data`:
+the mini-app's `init_data` is signed by Telegram's own Ed25519 key and verified
+at CORE against the published public keys before any session exists — public
+keys only, no bot secret held by CORE, so the entry surface needs no
+credential of its own to check. The refusal it can answer (`401`, the refused
+proof) is documented on the route like the web login's. The census lives in
+`tests/http-authentication-declaration.test.ts` and the OpenAPI contract;
+this section only keeps the prose from contradicting them.

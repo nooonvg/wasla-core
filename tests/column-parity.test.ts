@@ -160,7 +160,7 @@ describe("column parity: the declaration", () => {
     // claim by default, and the moment it was taken is the moment it was
     // written — both defaults the store overrides explicitly on every write, as
     // it does for all 50.)
-    expect(defaultedColumns().length).toBe(52);
+    expect(defaultedColumns().length).toBe(53);
     expect(defaultedColumns()).toContain("outbox.created_at");
   });
 });

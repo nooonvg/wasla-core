@@ -200,7 +200,9 @@ describe("runtime tables: the two exemptions, tried rather than trusted", () => 
     // the work rather than after it. 23 since XR-8.5's 0023 created the
     // one-time web sign-in token ledger. 24 since D-XR-13's 0024 tombstoned
     // deletion and freed the channel slot the tombstone leaves behind.
-    expect(forward.length, "no migrations found: the gate would pass vacuously").toBe(24);
+    // 25 since the mini-app bridge's 0025 created the single-use init_data
+    // proof ledger (D-XR-13, CLM-0701/0702 follow-up).
+    expect(forward.length, "no migrations found: the gate would pass vacuously").toBe(25);
     const silent = forward.filter((file) => {
       const sql = readFileSync(join(dir, file), "utf8");
       const version = file.replace(/\.sql$/, "");

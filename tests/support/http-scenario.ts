@@ -33,6 +33,7 @@ import { memoryPersistence, type Persistence } from "../../src/platform/persiste
 import { makeEvent } from "../../src/platform/eventing/envelope.js";
 import { seedCountry } from "./rows.js";
 import { fixedJwksSource, freshTelegramKey, signedTelegramIdToken } from "./web-sign-in-keys.js";
+import { freshMiniAppKey, signedMiniAppInitData } from "./mini-app-keys.js";
 
 /** Exactly what was sent, so it can be sent again unchanged. */
 export interface Request {
@@ -81,6 +82,7 @@ export async function runScenario(): Promise<Scenario> {
   // `web-sign-in.test.ts`; here the gate sees the same answer a client with a
   // valid Telegram id_token gets.
   const webKey = freshTelegramKey("scenario-web-key");
+  const miniAppKey = freshMiniAppKey();
   const core = createCoreApp({
     clock,
     persistence: store,
@@ -89,6 +91,10 @@ export async function runScenario(): Promise<Scenario> {
       issuer: "https://oauth.telegram.org",
       audience: "response-gate-web",
       jwks: fixedJwksSource(webKey.jwks),
+    },
+    miniAppSignIn: {
+      botId: "111222333",
+      publicKeys: [miniAppKey.publicHex],
     },
   });
   const answers = new Map<string, Answer>();
@@ -231,6 +237,28 @@ export async function runScenario(): Promise<Scenario> {
     },
     true,
     { cookie: `wasla_web_attempt=${attempt}` },
+  );
+  // The mini-app bridge (D-XR-13). Same doctrine as the web login above: this
+  // gate sees the SUCCESS the route really produces — an Ed25519-signed
+  // init_data proof verified, consumed once, and a session issued on the
+  // `telegram` channel. The replay refusal and the ledger are measured in
+  // `mini-app-sign-in.test.ts`, which drives every named refusal.
+  await call(
+    "POST",
+    "/v1/web-session/telegram/init-data",
+    "/v1/web-session/telegram/init-data",
+    {
+      init_data: signedMiniAppInitData(
+        miniAppKey,
+        "111222333",
+        {
+          auth_date: String(Math.floor(START.getTime() / 1000) - 60),
+          query_id: "scenario-mini-app-open",
+          user: JSON.stringify({ id: 445566770, first_name: "Scenario" }),
+        },
+      ),
+    },
+    true,
   );
   // Somebody else's session, which needs `identity.write` — also the
   // administrator's. A caller ending its own session would leave every later

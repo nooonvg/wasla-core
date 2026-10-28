@@ -54,8 +54,13 @@ import {
 } from "./modules/notification/service.js";
 import { IdentityChannelDirectory } from "./modules/notification/identity-directory.js";
 import { registerNotificationRoutes } from "./modules/notification/http.js";
-import { WebSignInService, type TelegramWebSignInOptions } from "./modules/web-session/service.js";
-export type { TelegramWebSignInOptions };
+import {
+  MiniAppSignInService,
+  WebSignInService,
+  type TelegramMiniAppVerificationConfig,
+  type TelegramWebSignInOptions,
+} from "./modules/web-session/service.js";
+export type { TelegramWebSignInOptions, TelegramMiniAppVerificationConfig };
 import { registerWebSessionRoutes } from "./modules/web-session/http.js";
 import type { NotificationChannel } from "./modules/notification/ports.js";
 
@@ -63,6 +68,8 @@ export interface CoreApp {
   router: Router<AuthenticatedPrincipal>;
   /** Web sign-in (XR-8.5): null when the environment configured none. */
   webSignIn: WebSignInService | null;
+  /** دخولُ المصغّرِ (D-XR-13) — أو `null` إن لم يُهيَّأْ، والمسارُ يُجيبُ 503 بالاسمِ. */
+  miniAppSignIn: MiniAppSignInService | null;
   bus: LocalEventBus;
   outbox: OutboxStore;
   boundary: TransactionBoundary;
@@ -174,6 +181,15 @@ export function createCoreApp(
      * everything would mint sessions no person earned.
      */
     webSignIn?: TelegramWebSignInOptions;
+    /**
+     * Mini app sign-in (D-XR-13): the adapter that verifies a Telegram mini
+     * app's `init_data` with CORE's own check — Ed25519 against Telegram's
+     * published public keys, no bot secret in the server — and issues the
+     * person session itself. Absent by default, and the route answers `503`
+     * by name: no proof verifier is invented for an environment that did not
+     * configure one.
+     */
+    miniAppSignIn?: TelegramMiniAppVerificationConfig;
   } = {},
 ): CoreApp {
   const clock = options.clock ?? systemClock;
@@ -197,6 +213,13 @@ export function createCoreApp(
   // the environment did not configure it; the route answers `503` by name.
   const webSignIn = options.webSignIn
     ? new WebSignInService(identity, store.webSignInNonces, options.webSignIn, clock)
+    : null;
+  // Mini app sign-in (D-XR-13): the channel adapter that verifies the mini
+  // app's signed `init_data` (Ed25519, public keys only — no bot secret) and
+  // issues the person session itself. Null means the environment did not
+  // configure it; the route answers `503` by name.
+  const miniAppSignIn = options.miniAppSignIn
+    ? new MiniAppSignInService(identity, store.miniAppProofs, options.miniAppSignIn, clock)
     : null;
   const fanOut = new DeliveryFanOut(store.delivery, clock, newId);
   // Addresses come from identity links through a port, never from a table this
@@ -441,11 +464,12 @@ export function createCoreApp(
   registerSubscriptionRoutes(router, billing, identity);
   registerReputationRoutes(router, reputation, identity);
   registerNotificationRoutes(router, notificationRecipients, notifications, identity);
-  registerWebSessionRoutes(router, webSignIn);
+  registerWebSessionRoutes(router, webSignIn, miniAppSignIn);
 
   return {
     router,
     webSignIn,
+    miniAppSignIn,
     metrics,
     depthSampler,
     bus,

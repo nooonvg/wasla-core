@@ -17,7 +17,12 @@ import { objectBody } from "../../platform/http/body.js";
 import { natural, newEachTime } from "../../platform/http/retry.js";
 import type { Router } from "../../platform/http/router.js";
 import type { AuthenticatedPrincipal } from "../identity-access/service.js";
-import { requireWebSignIn, type WebSignInService } from "./service.js";
+import {
+  requireMiniAppSignIn,
+  requireWebSignIn,
+  type MiniAppSignInService,
+  type WebSignInService,
+} from "./service.js";
 
 /**
  * يستخرجُ قيمةَ كوكي المحاولةِ من رأسِ Cookie كما يرسلُهُ المتصفّحُ. الكوكيّاتُ
@@ -39,6 +44,7 @@ function readAttemptCookie(cookie: string): string | undefined {
 export function registerWebSessionRoutes(
   router: Router<AuthenticatedPrincipal>,
   webSignIn: WebSignInService | null,
+  miniAppSignIn: MiniAppSignInService | null,
 ): void {
   // فتحُ المحاولةِ: nonce جديدٌ لمتصفّحٍ بعينِهِ. تكرارُ الطلبِ الحرفيِّ يفتحُ
   // محاولةً ثانيةً لا يعيدُ الأولى — فذلكَ مقصودٌ: nonce غيرُ مستعمَلٍ ينتهي
@@ -105,4 +111,36 @@ export function registerWebSessionRoutes(
       };
     },
   );
+  // دخولُ المصغّرِ (D-XR-13): الدليلُ `init_data` الموقّعُ من تيليجرامَ بتوقيعِ
+  // Ed25519 العلنيِّ — والتحققُّ منهُ في CORE نفسِهِ ضدَّ المفاتيحِ المنشورةِ بلا
+  // سرِّ بوتٍ في الخادمِ. مسارٌ مجهولٌ واحدٌ: لا مُستخدمٍ مسمّى يُطلبُ قبلَ الدليلِ.
+  router.post(
+    "/v1/web-session/telegram/init-data",
+    objectBody({ name: "init_data", kind: "text", required: true }),
+    anonymous(
+      "دخولُ المصغّرِ: الدليلُ init_data موقَّعٌ من تيليجرامَ بتوقيعٍ علنيٍّ لا يحتاجُ سرَّ بوتٍ، والتحققُّ منهُ في CORE نفسِهِ قبلَ إصدارِ الجلسةِ — لا مُستخدمٍ يُفحَصُ قبلَ الدليلِ",
+    ),
+    natural(
+      "دليلُ المصغّرِ أحاديُّ الاستعمالِ: بصمتُهُ تُستهلَكُ في أولِّ إتمامٍ، فأيُّ إعادةٍ للدليلِ نفسِهِ — بعدَ نجاحٍ أو فشلٍ — تُرفَضُ بـ401 ولا تكتبُ شيئًا: لا جلسةَ ولا هويّةَ. الاستهلاكُ يسبقُ أيَّ أثرٍ آخرَ، فإعادةُ الإرسالِ الحرفيّةُ للطلبِ لا تُدمَجُ ولا تُعادُ صرفُ ما صُرِفَ",
+    ),
+    async (ctx) => {
+      const service = requireMiniAppSignIn(miniAppSignIn);
+      const session = await service.issueSessionWithInitData(
+        ctx.input.requiredText("init_data"),
+        ctx.correlation_id,
+      );
+      return {
+        status: 201,
+        body: {
+          session_id: session.session_id,
+          access_token: session.access_token,
+          token_type: "Bearer",
+          expires_at: session.expires_at,
+          identity_id: session.identity_id,
+          identity_created: session.identity_created,
+        },
+      };
+    },
+  );
+
 }

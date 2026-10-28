@@ -384,6 +384,108 @@ paths:
                   expires_at: { type: string, format: date-time }
                   identity_id: { type: string, format: uuid }
                   identity_created: { type: boolean }
+  /v1/web-session/telegram/init-data:
+    post:
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      summary: Sign in from the Telegram mini-app with its init_data proof
+      description: >
+        The mini-app bridge (D-XR-13, the account-deletion delivery follow-up:
+        CLM-0701/0702). The mini-app cannot mint sessions itself and must not
+        hold any secret; its only evidence is the `init_data` Telegram publishes
+        for every open, which carries a **third-party Ed25519 signature** by
+        Telegram's own key — verified here against the public keys Telegram
+        documents for WebApps. Public keys only, no bot secret held by CORE:
+        the same standing decision as the web login surface (XR-8.5, B-45),
+        reached by the documented third-party path instead of OIDC because the
+        mini-app has no browser to bind a nonce to — the single-use proof is
+        what replaces the browser binding. The data check string is
+        `bot_id:WebAppData` followed by the fields sorted and newline-joined,
+        `hash` and `signature` excluded; the fingerprint stored in the
+        consumption ledger is the SHA-256 of that canonical form, not of the
+        raw string — a reordered or re-encoded init_data is the same proof and
+        is refused as `proof_already_used` on its second use.
+
+
+        A verified proof registers the person on the `telegram` channel with the
+        same external id space as the web login path (`tg-<id>`), so a person is
+        one identity whether they arrive from the mini-app or the browser, and
+        the mini-app session can carry the same generation binding the market
+        path already reads (CLM-0701). The proof is single-use: **one proof per
+        mini-app open**, consumed atomically on first use before any other
+        effect — a replay answers `401` with `proof_already_used` and mints
+        nothing (natural retry doctrine: no merge, no double issue). Freshness:
+        `auth_date` within 900 seconds, 60 seconds of future skew allowed;
+        outside that the refusal is named (`init_data_expired`,
+        `init_data_from_future`). A refused proof is named, never silent:
+        `malformed_init_data`, `signature_missing`, `signature_mismatch`,
+        `user_missing`, `auth_date_missing`. A new proof for the same person
+        resolves to the same identity (`identity_created: false`); after that
+        person's deletion the channel slot is freed and the next proof opens a
+        new identity — a new generation, inheriting nothing (D-XR-13).
+
+
+        When the environment configured no mini-app sign-in, the answer is `503`
+        with `mini app sign-in is not configured` — visible, never a silent
+        fallback that would invent a second source of sessions. The session is
+        issued on the `telegram` channel; its token works on every
+        authenticated route, including `POST /v1/me/deletion` — which is the
+        purpose of this bridge: a person inside Telegram holding the deletion
+        act of their own person at the core.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [init_data]
+              properties:
+                init_data:
+                  type: string
+                  description: >-
+                    The mini-app's init_data query string, signed by Telegram
+                    (Ed25519 `signature` field) and carrying `auth_date` and the
+                    `user` JSON object.
+      responses:
+        "500": { $ref: "#/components/responses/Error" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: >-
+            Mini-app sign-in is not configured for this environment (no bot id
+            and public keys). CORE is up and cannot serve this operation;
+            `code` is `unavailable`, distinct from an internal defect.
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "201":
+          headers:
+            x-correlation-id: { $ref: "#/components/headers/CorrelationId" }
+            x-ratelimit-limit: { $ref: "#/components/headers/RateLimitLimit" }
+            x-ratelimit-remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+            x-ratelimit-reset: { $ref: "#/components/headers/RateLimitReset" }
+          description: >-
+            Signed in. The token is returned once and stored only as a hash; the
+            init_data is stored only as the canonical fingerprint's hash in the
+            consumption ledger.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string, format: uuid }
+                  access_token: { type: string }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_at: { type: string, format: date-time }
+                  identity_id: { type: string, format: uuid }
+                  identity_created: { type: boolean }
   /v1/access/check:
     post:
       parameters:

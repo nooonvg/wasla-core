@@ -10,7 +10,7 @@
 import type { Clock } from "../../platform/clock.js";
 import type { ReferenceKeys } from "../../platform/persistence/reference-keys.js";
 import { putRow } from "../../platform/persistence/row-rules.js";
-import type { WebSignInNonceStore } from "./service.js";
+import type { MiniAppInitDataStore, WebSignInNonceStore } from "./service.js";
 
 /** صفُّ `web_sign_in_nonces` كما يتركهُ الترحيلُ 0023. */
 interface NonceRow {
@@ -51,6 +51,39 @@ export class InMemoryWebSignInNonceStore implements WebSignInNonceStore {
     putRow("web_sign_in_nonces", this.rows, nonceHash, {
       ...row,
       consumed_at: this.clock.now().toISOString(),
+    });
+    return true;
+  }
+}
+
+/** صفُّ `mini_app_init_data_proofs` كما يتركهُ الترحيلُ 0025. */
+interface ProofRow {
+  proof_hash: string;
+  created_at: string;
+}
+
+/**
+ * مخزنُّ أدلّةِ المصغّرِ في الذاكرةِ — للإسنادِ المرجعيِّ (الاختباراتِ) والعملياتِ
+ * أحاديّةِ العمليّةِ. نفسُ عقدِ نسخةِ القاعدةِ وبنفسِ الذرّيّةِ: القرارُ متزامنٌ في
+ * مسارٍ واحدٍ (الذاكرةُ لا تُشارَكُ بينَ عملياتٍ)، والكتابةُ عبرَ `putRow` فتخضعُ
+ * الصفوفُ لبوابةِ تكافؤِ الأعمدةِ كأيِّ جدولٍ محرَّكٍ آخرَ — لا إعفاءَ لجدولٍ لهُ
+ * كاتبٌ.
+ */
+export class InMemoryMiniAppProofStore implements MiniAppInitDataStore {
+  private readonly rows = new Map<string, ProofRow>();
+
+  constructor(clock: Clock, keys: ReferenceKeys) {
+    keys.attach("mini_app_init_data_proofs", this.rows);
+    this.clock = clock;
+  }
+
+  private readonly clock: Clock;
+
+  async consumeIfFirstUse(proofFingerprint: string): Promise<boolean> {
+    if (this.rows.has(proofFingerprint)) return false;
+    putRow("mini_app_init_data_proofs", this.rows, proofFingerprint, {
+      proof_hash: proofFingerprint,
+      created_at: this.clock.now().toISOString(),
     });
     return true;
   }
