@@ -376,11 +376,14 @@ for (const backend of await backends()) {
 
     it("دليلانِ متزامنانِ — فائزٌ واحدٌ بالضبطِ", async () => {
       const app = await backend.make();
+      // الفرقُ لا المجموعُ: قاعدةُ الاختبارِ المشتركةُ تحملُ جلساتِ
+      // الاختباراتِ الأخرى — فالمساسُ هو ما أضافَهُ هذا الدليلُ وحدَهُ.
+      const before = await app.countSessions();
       const initData = signedMiniAppInitData(app.key, BOT_ID, fieldsFor("AAQrace", 445566792));
       const [a, b] = await Promise.all([signIn(app, initData), signIn(app, initData)]);
       const statuses = [a.status, b.status].sort();
       expect(statuses).toEqual([201, 401]);
-      expect(await app.countSessions()).toBe(1);
+      expect(await app.countSessions()).toBe(before + 1);
     });
 
     it("503 مسمًّى حينَ لا تكوينَ — لا يُختلَقُ مصدرُ جلسةٍ ثانٍ", async () => {
