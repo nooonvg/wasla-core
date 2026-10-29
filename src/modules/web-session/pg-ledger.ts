@@ -6,6 +6,7 @@
  */
 
 import { runner, type Queryable } from "../../platform/persistence/postgres.js";
+import type { MiniAppInitDataStore } from "./service.js";
 
 export class PgWebSignInNonceStore {
   constructor(private readonly pool: Queryable, private readonly clock: { now(): Date }) {}
@@ -45,6 +46,29 @@ export class PgWebSignInNonceStore {
          AND consumed_at IS NULL AND expires_at > $3
        RETURNING nonce_hash`,
       [nonceHash, attemptHash, at],
+    );
+    return result.rowCount === 1;
+  }
+}
+
+/**
+ * `PgMiniAppProofStore` — مخزنُّ أدلّةِ المصغّرِ على PostgreSQL (D-XR-13 · ترحيلُ
+ * 0025).
+ *
+ * القرارُ (أولُ من استعملَ الدليلَ) يُتَّخَذُ حيثُ الصفُّ الواحدُ: إدراجٌ واحدٌ
+ * مشروطٌ بعدمِ الوجودِ (`ON CONFLICT DO NOTHING`) — فالموجودُ سلفًا دليلٌ
+ * استُهلِكَ، والفائزُ في التزامنِ من تُرجِعَ الإدراجةُ صفًّا.
+ */
+export class PgMiniAppProofStore implements MiniAppInitDataStore {
+  constructor(private readonly pool: Queryable, private readonly clock: { now(): Date }) {}
+
+  async consumeIfFirstUse(proofFingerprint: string): Promise<boolean> {
+    const result = await runner(this.pool).query(
+      `INSERT INTO mini_app_init_data_proofs (proof_hash, created_at)
+       VALUES ($1, $2)
+       ON CONFLICT (proof_hash) DO NOTHING
+       RETURNING proof_hash`,
+      [proofFingerprint, this.clock.now().toISOString()],
     );
     return result.rowCount === 1;
   }

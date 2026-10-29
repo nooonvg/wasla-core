@@ -94,6 +94,7 @@ const ANONYMOUS = [
   "GET /metrics",
   "POST /v1/identities",
   "POST /v1/web-session/telegram",
+  "POST /v1/web-session/telegram/init-data",
   "POST /v1/web-session/telegram/nonce",
 ];
 
@@ -450,7 +451,10 @@ describe("the contract publishes the refusal", () => {
     // فالـ401 عليهِ معناهُ الحرفيُّ (الدليلُ مرفوضٌ) لا «كانَ يجبُ أن يُقدَّمَ
     // اعتمادٌ». بلا هذا الاستثناءِ يُجبَرُ العقدُ على إخفاءِ رفضٍ حقيقيٍّ
     // يصلُ المتصلَ في الإنتاجِ — عكسَّ ما وُجدَ هذا البابُ لأجلِهِ.
-    const ANONYMOUS_401 = new Set(["POST /v1/web-session/telegram"]);
+    const ANONYMOUS_401 = new Set([
+      "POST /v1/web-session/telegram",
+      "POST /v1/web-session/telegram/init-data",
+    ]);
     const spurious = [...documented]
       .filter((one) => !required.includes(one) && !ANONYMOUS_401.has(one))
       .sort();
@@ -458,10 +462,12 @@ describe("the contract publishes the refusal", () => {
     // two session routes require a credential. 50 since XR-8.5 added the web
     // login surface, whose 401 is the refused proof, not a missing credential.
     // 51 since D-XR-13 added the deletion route, whose 401 is the answered
-    // retry of a committed deletion — the caller is nobody now.
+    // retry of a committed deletion — the caller is nobody now. 52 since the
+    // mini-app bridge (D-XR-13, CLM-0701/0702 follow-up) added the init-data
+    // sign-in surface: its 401 is the refused proof, same as the web login's.
     expect(missing).toEqual([]);
     expect(spurious).toEqual([]);
-    expect(documented.size).toBe(51);
+    expect(documented.size).toBe(52);
   });
 
   it("explains the ordering where a client will read it", () => {

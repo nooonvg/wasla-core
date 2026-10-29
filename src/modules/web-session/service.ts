@@ -32,6 +32,8 @@ import { hashToken, newToken } from "../../platform/ids.js";
 import type { Clock } from "../../platform/clock.js";
 import type { IdentityService } from "../identity-access/service.js";
 import { verifyTelegramIdToken, telegramSubject, type TelegramIdTokenVerification } from "./verify.js";
+import { verifyTelegramInitData, type TelegramMiniAppVerificationConfig } from "./init-data.js";
+export type { TelegramMiniAppVerificationConfig };
 import type { Jwks } from "./jwt.js";
 
 /**
@@ -183,5 +185,110 @@ export class WebSignInService {
  */
 export function requireWebSignIn(service: WebSignInService | null): WebSignInService {
   if (service === null) throw unavailable("web sign-in is not configured");
+  return service;
+}
+
+/**
+ * مخزنُّ أدلّةِ المصغّرِ — قرارُ «الدليلُ أُستُعمِلَ» يُتَّخَذُ حيثُ الصفُّ
+ * الواحدُ: استهلاكٌ ذرّيٌّ واحدٌ، وأولُ مستهلِكٍ يفوزُ. الدليلُ الذي يُرفضُ
+ * تحققُّهُ لا يصلُ هنا أصلًا، والذي يصلُ يُستهلَكُ مرةً واحدةً أبديّةً —
+ * الصفُّ سجلُّ تدقيقٍ دائمٌ لا حالةً تُنظَّفُ.
+ */
+export interface MiniAppInitDataStore {
+  /**
+   * يسجّلُ الدليلَ ويستهلِكُهُ إن كانَ أولَ استعمالٍ — يعيدُ `false` للمستهلَكِ
+   * سلفًا. القرارُ ذرّيٌّ في مكانِ الصفِّ: إدراجٌ واحدٌ مشروطٌ بعدمِ الوجودِ.
+   */
+  consumeIfFirstUse(proofFingerprint: string): Promise<boolean>;
+}
+
+/**
+ * محوّلُ دخولِ المصغّرِ (D-XR-13): الشخصُ داخلَ تيليجرامَ يُثبِتُ نفسَهُ بدليلٍ
+ * منَ المصغّرِ نفسِهِ — `init_data` الموقّعِ بتوقيعِ Ed25519 العلنيِّ — فتتحقّقُ
+ * النواةُ منَ التوقيعِ ضدَّ المفاتيحِ المنشورةِ **بلا سرِّ بوتٍ في الخادمِ**،
+ * وتُصدِرُ جلسةَ الشخصِ بنفسِها.
+ *
+ * قراراتٌ محفوظةٌ هنا كما في دخولِ الويبِ:
+ *
+ *  - **الهويةُ واحدةٌ داخلَ CORE**: الرابطُ على قناةِ `telegram` بمعرّفِ `tg-<id>`
+ *    — نفسُ فضاءِ المعرّفاتِ الذي يربطُ بهِ دخولُ الويبِ (`tg-<sub>` منَ OIDC)
+ *    والبوتُ عندَ أولِ لقاءٍ. فمن دخلَ منَ الويبِ ومن المصغّرِ هو هويةٌ واحدةٌ
+ *    (resolve-or-create)، ومن دخلَ بطريقةٍ ثانيةٍ من حسابٍ مفتوحٍ فهو رابطٌ جديدٌ
+ *    للشخصِ نفسِهِ — قرارُ D-XR-13 المعلنُ.
+ *  - **الجيلُ المحذوفُ لا يُورِّثُ**: حسابٌ مُقبَرٌ يحرّرُ رابطَ قناتِهِ (ترحيلُ
+ *    0024) فإعادةُ الدخولِ بنفسِ القناةِ تُنشئُ هويةً جديدةً لا ميراثَ فيها —
+ *    وهذا ما يجعلَ الحذفَ ثمّ إعادةَ التسجيلِ جيلًا جديدًا في MARKET أيضًا
+ *    (مفتاحُ الحسمِ CLM-0701).
+ *  - **الدليلُ أحاديُّ الاستعمالِ**: بصمةٌ قانونيّةٌ (sha256 لنصِّ التحققِّ نفسِهِ)
+ *    تُستهلَكُ في أولِ إتمامٍ — فإعادةُ إرسالِ الدليلِ نفسِهِ، من صاحبِهِ أو من
+ *    ملتقطِهِ، رفضٌ مسمّى واحدٌ. المصغّرُ يفتحُ من تيليجرامَ دليلاً طازجًا في
+ *    كلِّ مرةٍ، فهذا لا يُغلقُ بابًا مشروعًا ويُغلقُ بابَ إعادةِ التشغيلِ.
+ *  - **الجلسةُ على قناةِ `telegram`**: العميلُ هنا ويبْ-فيو تيليجرامَ — والقناةُ
+ *    مقيّدةٌ في عقدِ الهويةِ أصلًا، والشخصُ يملكُ على القناةِ رابطًا موثّقًا
+ *    (فحصُ الاستحقاقِ في `issueSessionAs` يقرأُهُ من هناك).
+ */
+export class MiniAppSignInService {
+  constructor(
+    private readonly identity: IdentityService,
+    private readonly proofs: MiniAppInitDataStore,
+    private readonly config: TelegramMiniAppVerificationConfig,
+    private readonly clock: Clock,
+  ) {}
+
+  /**
+   * يدخلُ الشخصُ منَ المصغّرِ بدليلِ `init_data`: تحقّقٌ منَ التوقيعِ العلنيِّ،
+   * ثمّ استهلاكٌ واحدٌ للدليلِ، ثمّ الهويةُ والجلسةُ. الدليلُ المرفوضُ لا يلمسُ
+   * المخزنَّ ولا الهويةَ أصلًا — والاستهلاكُ يسبقُ أيَّ أثرٍ آخرَ (هويةٍ أو جلسةٍ).
+   */
+  async issueSessionWithInitData(
+    initData: string,
+    correlationId: string,
+  ): Promise<WebSignInSession> {
+    const verification = verifyTelegramInitData(initData, this.config, this.clock.now());
+    if (!verification.ok) {
+      // السببُ المسمّى يصلُ المتصلَ: مطوّرُ المصغّرِ يصلحُ الخطأَ به، والدليلُ
+      // المرفوضُ لا يكشفُ شيئًا عنِ الهوياتِ القائمةِ.
+      throw unauthenticated(`telegram init_data refused: ${verification.rejection}`);
+    }
+
+    const consumed = await this.proofs.consumeIfFirstUse(verification.proofFingerprint);
+    if (!consumed) {
+      throw unauthenticated("telegram init_data refused: proof_already_used");
+    }
+
+    const registered = await this.identity.registerIdentity({
+      channel_type: "telegram",
+      external_id: `tg-${verification.user.id}`,
+      correlation_id: correlationId,
+      ...(verification.user.firstName !== undefined
+        ? { display_name: verification.user.firstName }
+        : {}),
+    });
+
+    const { session, token } = await this.identity.issueSession({
+      principal_id: registered.principal.principal_id,
+      channel_type: "telegram",
+      correlation_id: correlationId,
+      // المُصدِرُ هو الشخصُ نفسُهُ — بدليلِهِ الموقّعِ، لا «system»:
+      // سطرُ التدقيقِ يقولُ من فتحَ الجلسةَ وبأيِّ دليلٍ.
+      issued_by: registered.principal.principal_id,
+    });
+
+    return {
+      session_id: session.session_id,
+      access_token: token,
+      expires_at: session.expires_at,
+      identity_id: registered.identity.identity_id,
+      identity_created: registered.created,
+    };
+  }
+}
+
+/**
+ * دخولُ المصغّرِ غيرُ المُهيَّأِ يُجيبُ بالرفضِ المسمّى لا بالصمتِ — نفسُ حكمِ
+ * الويبِ: لا يُختلَقُ مصدرُ جلسةٍ ثانٍ، والغيابُ مرئيٌ (503).
+ */
+export function requireMiniAppSignIn(service: MiniAppSignInService | null): MiniAppSignInService {
+  if (service === null) throw unavailable("mini app sign-in is not configured");
   return service;
 }

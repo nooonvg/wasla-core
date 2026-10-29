@@ -1,12 +1,61 @@
 # WASLA CORE — Roadmap
 
-**Last updated:** 2026-10-25
+**Last updated:** 2026-10-28
 
 > **حدٌّ مصرَّحٌ به (المراجعة 14 · 2026-10-24 · F-43):** العقودُ والأنابيبُ
 > المبنيةُ لا تعني اكتمالَ التكاملِ التشغيليِّ — رحلةُ MARKET ← CORE ← MOVE لم
 > تُثبَت بعد (XR-4.3 مفتوح)، وحالةُ النقلِ الحيِّ بينَ المستودعاتِ **غيرُ
 > متحقَّقةٍ**؛ والقياساتُ المحليّةُ لا تُثبِتُ اكتمالَ الرحلةِ، والنشرُ خلفُ
 > قرارِ المالكِ (B-5/B-6)، والربطُ المتحقَّقُ منهُ بندٌ لاحقٌ (XR-6.1).
+**Last milestone:** The mini-app init-data bridge (D-XR-13, the account-deletion
+delivery follow-up — CLM-0701/0702 in MARKET closed the wiring; this closes the
+person at its source). Measured before this cycle, the mini-app user held **no
+person proof at CORE**: the web login surface (XR-8.5) binds a browser through a
+nonce, and the mini-app has no browser to bind — so its Telegram initData was
+verified nowhere, its MARKET identity carried no core generation binding
+(CLM-0701's gap), and the most destructive act sent the person to the web
+version. The answer is the third-party path Telegram documents for WebApps:
+`init_data` carries an **Ed25519 signature by Telegram's own key**, verified
+here against the public keys Telegram publishes — public keys only, no bot
+secret held by CORE, the same standing decision as XR-8.5 reached by the
+documented path instead of OIDC. The single-use proof replaces the browser
+binding: migration 0025's `mini_app_init_data_proofs` holds the SHA-256 of the
+**canonical** check string (`bot_id:WebAppData` + fields sorted, `hash` and
+`signature` excluded) — not of the raw string, so a reordered or re-encoded
+initData is the same proof — consumed atomically by one conditional INSERT
+(`ON CONFLICT DO NOTHING`), the winner decided where the row lives. `POST
+/v1/web-session/telegram/init-data`, anonymous by declaration, natural retry:
+a replay answers `401 proof_already_used` and mints nothing. Freshness is
+`auth_date` within 900 seconds, 60 seconds of future skew, boundary-inclusive;
+every refusal is named (`malformed_init_data`, `signature_missing`,
+`signature_mismatch`, `user_missing`, `auth_date_missing`, `init_data_expired`,
+`init_data_from_future`). A verified proof registers the person on the
+`telegram` channel in the same external id space as the web login (`tg-<id>`)
+— one identity whether they arrive from the mini-app or the browser — and
+issues the session on the `telegram` channel whose token works on every
+authenticated route, including `POST /v1/me/deletion`: that is the purpose of
+the bridge, and the acceptance test drives exactly that journey — deletion
+`204` from the mini-app session, the proof dead afterwards, and a fresh proof
+for the same channel opening a **new identity** (migration 0024's freed slot,
+`created: true`, no inheritance). Unconfigured is `503`, named — never a
+silent fallback that would invent a second source of sessions. Every
+declaration gate was updated by hand and re-run green: authentication (50
+authenticated routes, 52 documented `401`s, the census names seven anonymous
+routes), body (34 write routes), response declaration and headers (57 answers
+driven, the scenario now signs a real Ed25519 proof and sees the route's true
+`201`), documented refusals and error vocabulary (the new named refusals),
+column parity (the ledger table gated, not excused — 53 defaulted columns),
+read-path parity (one recorded excuse: the store answers a boolean, returns no
+record), runtime tables (25 migrations). **957** tests pass without
+`DATABASE_URL` (149 skipped, the cluster pass), the suite's count moved
+943 → 957, and the new behaviour file drives the full journey on both
+backends, canonical-fingerprint replay included. **Verification at this
+working tree:** `tsc --noEmit` clean; `npm run verify` green — typecheck, the
+full suite, governance, contracts (27 event schemas, 18 emitted types covered)
+and the test partition (76 files, 75 suite / 1 cluster).
+
+### D-XR-13's entry, kept as written
+
 **Last milestone:** Account deletion (D-XR-13) — the exit every platform owes
 the person and none of the three repositories offered. Measured before a line
 of this was written, twice over: no route, no service method, no event, no way

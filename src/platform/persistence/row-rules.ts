@@ -465,6 +465,13 @@ export const ROW_RULES = {
    */
   web_sign_in_nonces: [],
   /**
+   * دخولُ المصغّرِ (D-XR-13): جدولٌ بلا `CHECK` — قاعدتُهُ الوحيدةُ المفتاحُ
+   * الأوليُّ وقرارُ «أولِ مستهلِكٍ» الذي يُتَّخَذُ في الإدراجِ لا في قاعدةٍ على
+   * عمودٍ. وجودُهُ هنا هو ما يُخضِعُهُ لبوابةِ الأعمدةِ — نفسُ عودةِ الويبِ
+   * الصادقةِ: جدولٌ لهُ كاتبٌ يُحكَمُ، والإعفاءُ يُكسَرُ لا يُورَثُ.
+   */
+  mini_app_init_data_proofs: [],
+  /**
    * No `CHECK` constraints — the table is a claim ledger whose only rule is its
    * primary key. It is here so `putRow` will accept it at all, which is what
    * brings the column gate (and with it the `uuid` on `event_id`) to a table

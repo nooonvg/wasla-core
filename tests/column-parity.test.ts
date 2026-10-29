@@ -160,7 +160,7 @@ describe("column parity: the declaration", () => {
     // claim by default, and the moment it was taken is the moment it was
     // written — both defaults the store overrides explicitly on every write, as
     // it does for all 50.)
-    expect(defaultedColumns().length).toBe(52);
+    expect(defaultedColumns().length).toBe(53);
     expect(defaultedColumns()).toContain("outbox.created_at");
   });
 });
@@ -287,8 +287,10 @@ describe.skipIf(!url)("column parity against the live schema", () => {
     // 271 after it: milestone 33 added `state`, `claim_token`, `claimed_at` and
     // `completed_at` so the row can exist before the answer does. 283 since
     // D-XR-13: `deleted_at` on `identity_link` and `membership` — a tombstone
-    // needs its instant, and the live schema is the one that proves it.)
-    expect(columns.length, "no columns read: the gate would pass vacuously").toBe(283);
+    // needs its instant, and the live schema is the one that proves it. 285
+    // since the mini-app bridge's 0025 added the single-use proof ledger's
+    // two columns (D-XR-13, CLM-0701/0702 follow-up).)
+    expect(columns.length, "no columns read: the gate would pass vacuously").toBe(285);
     const problems: string[] = [];
     for (const column of columns) {
       const shapes = COLUMN_SHAPES[column.table] ?? [];
@@ -365,7 +367,9 @@ describe.skipIf(!url)("column parity against the live schema", () => {
     // history and it is not one: `idempotency_key_state_record_ck` ties all
     // three nullable answer columns to `state`, so the absence of a status
     // means "claimed" and can mean nothing else.
-    expect(live).toBe(220);
+    // 222 since the mini-app bridge's proof ledger: both its columns are
+    // NOT NULL — the row exists only when the proof was consumed.
+    expect(live).toBe(222);
   });
 
   it("raises the same message the database raises for the same bad value", async () => {

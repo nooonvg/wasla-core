@@ -123,7 +123,7 @@ describe("declared response headers", () => {
     // 56 since D-XR-13 drove the deletion route through a person registered
     // apart: the scenario's admin would be refused, and a granted deletion is
     // the only answer whose headers this gate has anything to say about.
-    expect(scenario.answers.size).toBe(56);
+    expect(scenario.answers.size).toBe(57);
     const shape = declaredResponseHeader("x-correlation-id")!.shape;
     const missing: string[] = [];
     for (const [label, answer] of scenario.answers) {

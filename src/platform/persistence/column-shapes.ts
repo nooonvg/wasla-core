@@ -470,6 +470,15 @@ export const COLUMN_SHAPES: Readonly<Record<string, readonly ColumnShape[]>> = {
     { column: "expires_at", type: "timestamptz", notNull: true },
     { column: "consumed_at", type: "timestamptz", notNull: false },
   ],
+
+  // ── جسرُ المصغّرِ (D-XR-13، تتمةُ توصيلِ الحذفِ CLM-0701/0702) ── سجلُّ
+  // الأدلّةِ الأحاديّةِ الاستعمالِ: بصمةُ الدليلِ القانونيّةُ (SHA-256 لنصِّ
+  // التحققِ الموقَّعِ، لا النصِّ الخامِّ) تُدرَجُ مرةً واحدةً — والفائزُ يُحسَمُ
+  // حيثُ يعيشُ الصفُّ. الصفُّ يبقى للأبدِ: أثرُ تدقيقٍ لا حالةٌ تُكنَس.
+  mini_app_init_data_proofs: [
+    { column: "proof_hash", type: "text", notNull: true },
+    { column: "created_at", type: "timestamptz", notNull: true, databaseDefault: "now()" },
+  ],
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
-import { createCoreApp, type TelegramWebSignInOptions } from "./app.js";
+import { createCoreApp, type TelegramMiniAppVerificationConfig, type TelegramWebSignInOptions } from "./app.js";
 import type { Pool } from "pg";
+import { TELEGRAM_ED25519_PUBLIC_KEYS } from "./modules/web-session/init-data.js";
 import { postgresPersistence } from "./platform/persistence/backends.js";
 import { systemClock } from "./platform/clock.js";
 import { CachedJwksSource, HttpJwksFetcher } from "./modules/web-session/jwks.js";
@@ -32,10 +33,17 @@ const pool: Pool | undefined = databaseUrl
 // fallback that would invent a second source of sessions. The keys are public
 // (JWKS); no secret reaches CORE for this path.
 const webSignIn = pool === undefined ? null : webSignInFromEnvironment(process.env);
+// Mini app sign-in (D-XR-13), same rule as web sign-in: the proof ledger must
+// be durable — a replay guard that resets on restart is not a login surface —
+// so the flow is only wired when the process owns the database. Verification
+// is Ed25519 against Telegram's published public keys; the only configured
+// value is the mini app bot's *id* (public), never a bot secret.
+const miniAppSignIn = pool === undefined ? null : miniAppSignInFromEnvironment(process.env);
 
 const app = createCoreApp({
   ...(pool === undefined ? {} : { persistence: postgresPersistence(pool, systemClock) }),
   ...(webSignIn === null ? {} : { webSignIn }),
+  ...(miniAppSignIn === null ? {} : { miniAppSignIn }),
 });
 
 const server = createServer(app.router.nodeListener());
@@ -99,4 +107,25 @@ function webSignInFromEnvironment(
     audience,
     jwks: new CachedJwksSource(new HttpJwksFetcher(jwksUrl)),
   };
+/**
+ * قراءةُ دخولِ المصغّرِ منَ البيئةِ — قيمةٌ واحدةٌ علنيّةٌ لا سرَّ فيها:
+ * معرّفُ البوتِ صاحبِ المصغّرِ (`TELEGRAM_MINI_APP_BOT_ID` · أرقامٌ فقط)،
+ * ومفاتيحُ Ed25519 العلنيّةُ اختياريّةٌ (`TELEGRAM_ED25519_PUBLIC_KEYS` · hex
+ * مفصولةٌ بفواصلَ) إن أرادَ المشغِّلُ مفتاحًا جديدًا قبلَ تحديثِ المنشورِ
+ * الافتراضيِّ. لا يُبنى المسارُ بلا معرّفِ البوتِ: الدليلُ مربوطٌ بتوقيعِهِ
+ * إليهِ، فغيابُهُ غيابُ التحققِّ كلِّهِ — لا مصدرُ جلسةٍ ثانٍ يُختلَقُ.
+ */
+
+}
+
+function miniAppSignInFromEnvironment(
+  env: Record<string, string | undefined>,
+): TelegramMiniAppVerificationConfig | null {
+  const botId = env["TELEGRAM_MINI_APP_BOT_ID"];
+  if (botId === undefined || !/^\d+$/.test(botId)) return null;
+  const rawKeys = env["TELEGRAM_ED25519_PUBLIC_KEYS"];
+  const publicKeys = rawKeys
+    ? rawKeys.split(",").map((k) => k.trim()).filter((k) => k.length > 0)
+    : [TELEGRAM_ED25519_PUBLIC_KEYS.production, TELEGRAM_ED25519_PUBLIC_KEYS.test];
+  return { botId, publicKeys };
 }
