@@ -57,6 +57,25 @@ const relay = setInterval(() => {
   });
 }, relayIntervalMs);
 
+// Inbound dispatcher and webhook delivery worker (XR-4.3). Without these two
+// loops an event accepted by `POST /v1/events` is recorded and never handed to
+// its consumer (fulfillment never sees `market.order.created`), and a
+// subscription is registered and never called. Measured on main at 99f4336:
+// `server.ts` ran only the outbox relay, so the live journey stopped at
+// ingress. Each loop drains one batch per tick and logs, never throws.
+const dispatchIntervalMs = Number(process.env["INBOUND_DISPATCH_INTERVAL_MS"] ?? 1000);
+const dispatchTimer = setInterval(() => {
+  void app.dispatcher.drainOnce().catch((err) => {
+    console.error(JSON.stringify({ level: "error", component: "inbound-dispatcher", message: String(err) }));
+  });
+}, dispatchIntervalMs);
+const deliveryIntervalMs = Number(process.env["EVENT_DELIVERY_INTERVAL_MS"] ?? 1000);
+const deliveryTimer = setInterval(() => {
+  void app.deliveries.drainOnce().catch((err) => {
+    console.error(JSON.stringify({ level: "error", component: "event-delivery", message: String(err) }));
+  });
+}, deliveryIntervalMs);
+
 // Depth sampler — runs on a fixed interval so the metrics exposition is
 // populated before any scrape, not read at scrape time. See DepthSampler.
 const sampleIntervalMs = Number(process.env["SAMPLE_INTERVAL_MS"] ?? 15000);
@@ -76,6 +95,8 @@ server.listen(port, () => {
 function shutdown(signal: string) {
   console.log(JSON.stringify({ level: "info", component: "http", message: `shutting down (${signal})` }));
   clearInterval(relay);
+  clearInterval(dispatchTimer);
+  clearInterval(deliveryTimer);
   clearInterval(sampleTimer);
   server.close(() => {
     if (pool === undefined) {
