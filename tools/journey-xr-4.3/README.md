@@ -60,7 +60,9 @@ worker.
 
 Run harness mode against a wasla checkout at `main`, and real mode against the
 CLM-0708 branch. Harness mode against CLM-0708 fails exactly the two G-7
-checks in scenario C, which shows that the gap is closed.
+checks in scenario C, which shows that the gap is closed. Re-measured on
+2026-10-30 with this version of the harness: harness mode against wasla `main`
+(`1db368f`) still gives **23 passed, 0 failed**.
 
 ## Measured on 2026-10-30 (real mode)
 
