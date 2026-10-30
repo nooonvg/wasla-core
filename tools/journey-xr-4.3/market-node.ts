@@ -21,6 +21,61 @@ import { cancelStoreOrder } from "../../../wasla/services/delivery/src/use-cases
 import { consumeCoreFulfillmentEvent } from "../../../wasla/services/delivery/src/use-cases/consume-core-fulfillment.js";
 import { FakeCatalog, FakeReservationPort, CUSTOMER_REF, PRODUCT_A, PRODUCT_B, STORE_SLUG, STORE_ID } from "../../../wasla/services/delivery/src/__tests__/store-order-fakes.js";
 
+/*
+ * MARKET_TRANSPORTS=real (wasla CLM-0708 and later): G-1, G-3 and G-6 use
+ * MARKET's OWN transports instead of the stand-ins below:
+ *   G-1  relayCoreEgressOnce   (services/delivery/src/infrastructure/pg-core-relays.ts)
+ *   G-6  relayCoreCancelsOnce  (same file)
+ *   G-3  POST /delivery/core/fulfillment-events of buildDeliveryHttpApp, driven
+ *        through fastify.inject with CORE's exact body and headers.
+ * Only proof of delivery (G-4) stays out of band: when the journey registered a
+ * proof for the order, that one delivery goes to the consumer directly with it.
+ */
+const REAL = process.env.MARKET_TRANSPORTS === "real";
+type RealTransports = {
+  relay: () => Promise<{ sent: number; failed: number; cancels_sent: number; cancels_failed: number }>;
+  intake: (body: string, headers: Record<string, string | string[] | undefined>) => Promise<[number, { result: string }]>;
+};
+async function loadReal(): Promise<RealTransports> {
+  const relays = await import("../../../wasla/services/delivery/src/infrastructure/pg-core-relays.js");
+  const { buildDeliveryHttpApp } = await import("../../../wasla/services/delivery/src/http/app.js");
+  const sa = await import("@wasla/service-auth");
+  const opts = { coreUrl: CORE, token: TOKEN, backoffBaseSeconds: 0 };
+  const app = buildDeliveryHttpApp({
+    readPort: store,
+    writePort: store,
+    reservationPort,
+    reservationStore: store,
+    serviceIdentity: {
+      keys: sa.keyRegistryFromEnv({ WASLA_SERVICE_AUTH_KEYS: `journey:active:${"j".repeat(48)}`, WASLA_SERVICE_AUTH_ACTIVE_KID: "journey" }),
+      replayGuard: new sa.InMemoryServiceTokenReplayGuard(),
+    },
+    coreFulfillmentIntake: { secret: SECRET, inbox, links: new relays.PgCoreFulfillmentLinks(pool) },
+  });
+  await app.fastify.ready();
+  return {
+    relay: async () => {
+      const e = await relays.relayCoreEgressOnce(pool, opts);
+      const c = await relays.relayCoreCancelsOnce(pool, opts);
+      return { sent: e.sent, failed: e.retried + e.refused, cancels_sent: c.sent, cancels_failed: c.retried + c.refused };
+    },
+    intake: async (body, headers) => {
+      const res = await app.fastify.inject({
+        method: "POST",
+        url: "/delivery/core/fulfillment-events",
+        headers: {
+          "content-type": "application/json",
+          "x-wasla-signature": String(headers["x-wasla-signature"] ?? ""),
+          "x-wasla-event-id": String(headers["x-wasla-event-id"] ?? ""),
+          "x-wasla-delivery-attempt": String(headers["x-wasla-delivery-attempt"] ?? ""),
+        },
+        payload: body,
+      });
+      return [res.statusCode, res.json() as { result: string }];
+    },
+  };
+}
+
 const env = (k: string) => { const v = process.env[k]; if (!v) throw new Error(`missing ${k}`); return v; };
 const pool = new pg.Pool({ connectionString: env("MARKET_DATABASE_URL"), max: 4 });
 const store = new StoreOrderStore(pool);
@@ -36,6 +91,8 @@ const transitionDeps = { readPort: store, writePort: store, reservationPort, res
 /** Proof captured at the door (OTP the customer reads to the courier). Out of band: G-4. */
 const proofs = new Map<string, { proofType: "otp"; proofRef: string }>();
 const consumed: unknown[] = [];
+let realTransports: RealTransports | null = null;
+const real = async (): Promise<RealTransports> => (realTransports ??= await loadReal());
 
 // ---- G-1 egress relay -------------------------------------------------------
 async function relayOnce(): Promise<{ sent: number; failed: number }> {
@@ -78,6 +135,23 @@ function signatureOk(body: string, header: string | undefined): boolean {
 const RETRYABLE = new Set(["out_of_order", "proof_missing", "order_not_found", "error"]);
 
 async function handle(method: string, path: string, body: string, headers: Record<string, string | string[] | undefined>): Promise<[number, unknown]> {
+  if (method === "POST" && path === "/webhook/core-fulfillment" && REAL) {
+    let envelope: { event_type?: string; event_id?: string; payload?: { order_reference?: string } } = {};
+    try { envelope = JSON.parse(body); } catch { /* the real route answers */ }
+    const orderRef = envelope?.payload?.order_reference;
+    const proof = orderRef ? proofs.get(orderRef) ?? null : null;
+    let status: number; let out: { result: string };
+    if (proof !== null && signatureOk(body, headers["x-wasla-signature"] as string | undefined)) {
+      // G-4 only: proof captured out of band reaches the consumer directly.
+      const result = await consumeCoreFulfillmentEvent({ inbox, orders: store, transition: transitionDeps }, envelope as never, proof);
+      status = RETRYABLE.has(result.kind) ? 503 : 200; out = { result: result.kind };
+    } else {
+      [status, out] = await (await real()).intake(body, headers);
+    }
+    consumed.push({ at: new Date().toISOString(), order_reference: orderRef, event_type: envelope.event_type, event_id: envelope.event_id, attempt: headers["x-wasla-delivery-attempt"], result: out.result });
+    console.log("[market] consumed (real transport)", envelope.event_type, out.result, status);
+    return [status, out];
+  }
   if (method === "POST" && path === "/webhook/core-fulfillment") {
     if (!signatureOk(body, headers["x-wasla-signature"] as string | undefined)) return [401, { error: "bad_signature" }];
     const envelope = JSON.parse(body);
@@ -105,7 +179,7 @@ async function handle(method: string, path: string, body: string, headers: Recor
   }
   if (method === "POST" && path === "/control/cancel") return [200, await cancelStoreOrder(transitionDeps as never, b.publicId, b.input ?? { reason: "CUSTOMER_CHANGED_MIND" } as never, "xr43").catch((e) => ({ error: String(e) }))];
   if (method === "POST" && path === "/control/proof") { proofs.set(b.orderRef, { proofType: "otp", proofRef: b.proofRef }); return [200, { ok: true }]; }
-  if (method === "POST" && path === "/control/relay") return [200, await relayOnce()];
+  if (method === "POST" && path === "/control/relay") return [200, REAL ? await (await real()).relay() : await relayOnce()];
   if (method === "GET" && path.startsWith("/control/last?")) {
     const u = new URLSearchParams(path.slice("/control/last?".length));
     const hit = (consumed as { order_reference?: string; event_type: string; result: string }[]).filter((c) => c.order_reference === u.get("ref") && c.event_type === u.get("type")).at(-1);

@@ -15,6 +15,8 @@ PGBASE=${PGBASE:-postgres://postgres:pg@localhost}
 case "$PGBASE" in *@localhost*|*@127.0.0.1*) ;; *) echo "refusing: PGBASE must be local"; exit 2;; esac
 ORG=11111111-1111-4111-8111-111111111111
 MSEC=market-journey-secret-$(openssl rand -hex 16); VSEC=move-journey-secret-$(openssl rand -hex 16)
+# MARKET_TRANSPORTS=real: MARKET's own G-1/G-3/G-6 transports (wasla CLM-0708+).
+MARKET_TRANSPORTS=${MARKET_TRANSPORTS:-harness}; export MARKET_TRANSPORTS
 T=$(mktemp -d); trap 'pkill -f market-node.ts; pkill -f move-node.ts; pkill -f "vite-node src/server.ts"; true' EXIT
 PASS=0; FAIL=0
 check() { if [ "$2" = "$3" ]; then echo "  PASS  $1 ($2)"; PASS=$((PASS+1)); else echo "  FAIL  $1: got '$2' want '$3'"; FAIL=$((FAIL+1)); fi; }
@@ -47,7 +49,10 @@ echo "== 4. start CORE :18080, MARKET :18070, MOVE :18090"
 for u in http://localhost:18080/health https://localhost:18070/control/relay-status https://localhost:18090/control/state; do for i in $(seq 1 60); do curl -sk -o /dev/null "$u" && break; sleep 0.5; done; done
 sub() { $C -XPOST localhost:18080/v1/event-subscriptions -H "authorization: Bearer $OTOK" -d "{\"subscriber\":\"$1\",\"event_type\":\"core.fulfillment.$2\",\"endpoint_url\":\"$3\",\"signing_secret\":\"$4\"}" >/dev/null; }
 for e in created cancelled; do sub move $e https://localhost:18090/webhook/core-events $VSEC; done
-for e in dispatched completed cancelled; do sub market $e https://localhost:18070/webhook/core-fulfillment $MSEC; done
+# real mode also subscribes `created`: it carries the fulfillment_id MARKET needs to cancel before dispatch (G-6).
+MEV="dispatched completed cancelled"; [ "$MARKET_TRANSPORTS" = real ] && MEV="created $MEV"
+for e in $MEV; do sub market $e https://localhost:18070/webhook/core-fulfillment $MSEC; done
+echo "  MARKET transports: $MARKET_TRANSPORTS"
 M=https://localhost:18070; V=https://localhost:18090
 place() { $C -XPOST $M/control/place -d "${1:-{\}}" | python3 -c "import json,sys;print(json.load(sys.stdin)['order']['publicId'])"; }
 state() { q xr43_market "select fulfillment_state from store_orders where public_id='$1'"; }
@@ -89,17 +94,33 @@ P2=$(place); $C -XPOST $M/control/walk -d "{\"publicId\":\"$P2\"}" >/dev/null; $
 waitfor x "job $P2 state" coordinating >/dev/null; F2=$(job $P2 fulfillment_id)
 $C -XPOST $V/control/reject -d "{\"fulfillment_id\":\"$F2\",\"reason\":\"no_courier_available\"}" >/dev/null; $C -XPOST $V/control/ship >/dev/null
 check "CORE closes failed" "$(waitfor x "core $P2" failed)" failed
+if [ "$MARKET_TRANSPORTS" = real ]; then
+check "G-7 closed: MARKET applies CORE's failed close" "$(waitfor x "inboxlast $P2 core.fulfillment.completed" applied)" applied
+check "order failed (core-only edge ready_for_delivery->failed)" "$(waitfor x "state $P2" failed)" failed
+check "reservation released on failed" "$(q xr43_market "select inventory_state from store_orders where public_id='$P2'")" released
+else
 check "MARKET has no edge ready_for_delivery->failed (G-7): stuck, retried" "$(waitfor x "inboxlast $P2 core.fulfillment.completed" out_of_order)" out_of_order
 check "order left in ready_for_delivery" "$(state $P2)" ready_for_delivery
+fi
 
 echo "== D. customer cancels"
 P3=$(place); $C -XPOST $M/control/relay >/dev/null; waitfor x "job $P3 state" coordinating >/dev/null
 $C -XPOST $M/control/cancel -d "{\"publicId\":\"$P3\"}" >/dev/null; sleep 2
 check "MARKET cancelled" "$(state $P3)" cancelled
+if [ "$MARKET_TRANSPORTS" = real ]; then
+check "G-6: MARKET learned the fulfillment link from core.fulfillment.created" "$(q xr43_market "select count(*) from core_fulfillment_link where order_public_id='$P3'")" 1
+R3=$($C -XPOST $M/control/relay)
+check "G-6 closed: MARKET's cancel relay calls CORE" "$(echo "$R3" | python3 -c "import json,sys;print(json.load(sys.stdin)['cancels_sent'])")" 1
+check "MOVE job cancelled" "$(waitfor x "job $P3 state" cancelled)" cancelled
+check "CORE fulfillment cancelled" "$(waitfor x "core $P3" cancelled)" cancelled
+check "CORE's cancelled echo on a cancelled order settles terminally as already-applied (idempotent)" "$(waitfor x "inboxlast $P3 core.fulfillment.cancelled" applied)" applied
+check "the cancel is never sent twice" "$($C -XPOST $M/control/relay | python3 -c "import json,sys;print(json.load(sys.stdin)['cancels_sent'])")" 0
+else
 check "MOVE job still open: MARKET cancel never reaches CORE (G-6)" "$(job $P3 state)" coordinating
 F3=$(job $P3 fulfillment_id)
 $C -XPOST localhost:18080/v1/fulfillments/$F3/cancel -H "authorization: Bearer $MTOK" -d '{"reason":"customer_cancelled"}' >/dev/null
 check "with the missing call made: MOVE job cancelled" "$(waitfor x "job $P3 state" cancelled)" cancelled
+fi
 
 echo "== E. store with no CORE organization (XR-6.1 not bound)"
 P4=$(place '{"unbound":true}')

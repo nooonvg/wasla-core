@@ -30,7 +30,7 @@ The marketplace catalog is MARKET's own test fake. It returns the CORE
 organization id for the store, which is exactly what the XR-6.1
 store↔organization binding will provide.
 
-## Measured on 2026-10-29
+## Measured on 2026-10-29 (harness mode)
 
 Checkouts: wasla `1db368f`, wasla-core `99f4336` plus this PR, ceezr
 `b18bfb6`. Result: **23 passed, 0 failed**.
@@ -51,6 +51,28 @@ already fails. `POST /v1/events` returns 202 and no fulfillment is ever
 created, because the process never ran the inbound dispatcher or the delivery
 worker.
 
+## Two modes
+
+| Mode | MARKET transports | Expected |
+|---|---|---|
+| `harness` (default) | `market-node.ts` stands in for the missing pieces (G-1, G-3) | reproduces the gaps as on wasla `main`: C stuck (G-7), D job still open (G-6) |
+| `MARKET_TRANSPORTS=real` | MARKET's own code from wasla CLM-0708: `relayCoreEgressOnce`, `relayCoreCancelsOnce` and the route `POST /delivery/core/fulfillment-events` (called with `fastify.inject`, raw signed body) | G-1, G-3, G-6 and G-7 closed; MARKET also subscribes to `core.fulfillment.created` to learn the fulfillment link |
+
+Run harness mode against a wasla checkout at `main`, and real mode against the
+CLM-0708 branch. Harness mode against CLM-0708 fails exactly the two G-7
+checks in scenario C, which shows that the gap is closed.
+
+## Measured on 2026-10-30 (real mode)
+
+Checkouts: wasla `fix/clm-0708-market-core-live-wiring`, wasla-core this PR,
+ceezr `b18bfb6`. Result: **28 passed, 0 failed**.
+
+| Scenario | Result |
+|---|---|
+| A, B, E, F | as in harness mode below, but through MARKET's real egress relay and signed intake route |
+| C. MOVE rejects | CORE `failed` → MARKET applies it on the core-only edge `ready_for_delivery → failed` and releases the reservation (G-7 closed) |
+| D. Customer cancels | MARKET learns the link from `core.fulfillment.created`; its cancel relay calls CORE once (`cancels_sent=1`); MOVE job and CORE fulfillment `cancelled`; CORE's `cancelled` echo settles terminally as `applied`; a second relay pass sends nothing (G-6 closed) |
+
 ## Gaps found (these block a live XR-4.3)
 
 | ID | System | Gap | Evidence |
@@ -62,3 +84,5 @@ worker.
 | G-5 | MOVE | No driver surface for operational jobs. `lifecycle.accept/complete/reject` are called only by tests | `/control/*` in `move-node.ts` |
 | G-6 | MARKET→CORE | A customer cancel in MARKET never reaches CORE, so MOVE can still dispatch a courier | scenario D |
 | G-7 | MARKET | When MOVE rejects, CORE closes `failed`, but MARKET has no `ready_for_delivery → failed` edge. The order stays stuck while CORE retries until the delivery dies | scenario C |
+
+Status on 2026-10-30: G-2 is fixed in this PR. G-1, G-3, G-6 and G-7 are closed in wasla CLM-0708 (ADR-026 §4.30) and measured in real mode above. G-4 (proof contract) and G-5 (MOVE driver surface) are still open.
